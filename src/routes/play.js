@@ -154,7 +154,7 @@ router.get('/play/:videoId.mp4', async (req, res) => {
     req.on('close', () => { ffmpeg.kill('SIGTERM'); });
   } catch (err) {
     console.error(`[play] Error for ${videoId}:`, err.message);
-    if (!res.headersSent) res.status(502).send('Play failed: ' + err.message);
+    if (!res.headersSent) res.status(502).send('Play failed');
   }
 });
 

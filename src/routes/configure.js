@@ -53,13 +53,12 @@ router.get('/', (req, res) => {
           width: 90px;
           height: 90px;
           margin: 0 auto 24px;
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-          border-radius: 22px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 44px;
           box-shadow: 0 8px 32px rgba(102, 126, 234, 0.3);
+        }
+
+        .logo svg {
+          width: 100%;
+          height: 100%;
         }
 
         h1 {
@@ -140,47 +139,29 @@ router.get('/', (req, res) => {
           color: #d0d0e0;
         }
 
-        .features {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-          gap: 16px;
-          margin-bottom: 60px;
-        }
-
-        .feature {
+        .about {
           background: rgba(255, 255, 255, 0.04);
           border: 1px solid rgba(255, 255, 255, 0.06);
-          border-radius: 12px;
-          padding: 24px;
-          transition: all 0.25s ease;
-        }
-
-        .feature:hover {
-          background: rgba(255, 255, 255, 0.07);
-          border-color: rgba(102, 126, 234, 0.2);
-        }
-
-        .feature-icon {
-          font-size: 28px;
-          margin-bottom: 12px;
-        }
-
-        .feature h3 {
+          border-radius: 14px;
+          padding: 32px;
+          margin-bottom: 60px;
           font-size: 15px;
-          font-weight: 600;
-          margin-bottom: 6px;
-          color: #e0e0f0;
+          line-height: 1.8;
+          color: #9898b8;
+          text-align: center;
+          max-width: 620px;
+          margin-left: auto;
+          margin-right: auto;
         }
 
-        .feature p {
-          font-size: 13px;
-          color: #7878a0;
-          line-height: 1.5;
+        .about strong {
+          color: #c0c0e0;
+          font-weight: 600;
         }
 
         .deploy-options {
           display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+          grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
           gap: 14px;
         }
 
@@ -264,7 +245,18 @@ router.get('/', (req, res) => {
     </head>
     <body>
       <div class="hero">
-        <div class="logo">▶</div>
+        <div class="logo">
+          <svg viewBox="0 0 90 90" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#667eea"/>
+                <stop offset="100%" stop-color="#764ba2"/>
+              </linearGradient>
+            </defs>
+            <rect width="90" height="90" rx="22" fill="url(#bg)"/>
+            <text x="18" y="64" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="52" font-weight="800" fill="white" letter-spacing="-2">T+</text>
+          </svg>
+        </div>
         <h1>Tubio+</h1>
         <p class="tagline">Stream YouTube directly in Stremio.<br>Built for iOS, tvOS, and web.</p>
         <div class="actions">
@@ -273,59 +265,31 @@ router.get('/', (req, res) => {
       </div>
 
       <div class="section">
-        <div class="features">
-          <div class="feature">
-            <div class="feature-icon">🔍</div>
-            <h3>Search & Discover</h3>
-            <p>Search YouTube, browse recommendations, and explore trending content.</p>
-          </div>
-          <div class="feature">
-            <div class="feature-icon">📺</div>
-            <h3>Your Library</h3>
-            <p>Access subscriptions, watch history, and watch later with cookie auth.</p>
-          </div>
-          <div class="feature">
-            <div class="feature-icon">🎬</div>
-            <h3>Up to 1080p</h3>
-            <p>H.264 streams muxed on-the-fly for full iOS and tvOS compatibility.</p>
-          </div>
-          <div class="feature">
-            <div class="feature-icon">🚫</div>
-            <h3>SponsorBlock</h3>
-            <p>Skip sponsors, intros, outros, and filler automatically.</p>
-          </div>
-          <div class="feature">
-            <div class="feature-icon">🏷️</div>
-            <h3>DeArrow</h3>
-            <p>Community-sourced titles and thumbnails — no more clickbait.</p>
-          </div>
-          <div class="feature">
-            <div class="feature-icon">🔒</div>
-            <h3>Private</h3>
-            <p>Self-hosted. Your cookies and config are encrypted end-to-end.</p>
-          </div>
+        <div class="about">
+          A self-hosted Stremio addon that streams YouTube content up to <strong>1080p h264</strong>,
+          muxed on-the-fly with FFmpeg for full iOS and tvOS compatibility.
+          Search, browse recommendations, access your subscriptions, watch history, and watch later
+          with cookie authentication. Includes <strong>SponsorBlock</strong> to skip sponsors and filler,
+          and <strong>DeArrow</strong> for community-sourced titles and thumbnails.
+          Your config is AES-256 encrypted with a key unique to each deployment.
         </div>
       </div>
 
       <div class="section">
         <h2 class="section-title">Deploy Your Own</h2>
         <div class="deploy-options">
-          <a href="https://github.com/cat5edopeHA/tubiopp#deploy-with-docker" class="deploy-card">
-            <h3>🐳 Docker</h3>
-            <p>One command to run anywhere. Includes yt-dlp and FFmpeg.</p>
+          <a href="https://github.com/cat5edopeHA/tubiopp" class="deploy-card">
+            <h3>Self-Hosted</h3>
+            <p>Run with Docker or Node.js directly. Requires yt-dlp and FFmpeg.</p>
             <span class="badge badge-rec">Recommended</span>
           </a>
-          <a href="https://github.com/cat5edopeHA/tubiopp#node" class="deploy-card">
-            <h3>📦 Node.js</h3>
-            <p>Clone the repo and run directly. Requires Node 18+, yt-dlp, and FFmpeg.</p>
-          </a>
-          <a href="https://github.com/niconiahi/stremio-addon-sdk-beamup" class="deploy-card">
-            <h3>☁️ Beamup</h3>
-            <p>Free hosting built for Stremio addons. Zero config deployment.</p>
+          <a href="https://github.com/Stremio/stremio-addon-sdk/blob/master/docs/deploying/beamup.md" class="deploy-card">
+            <h3>Beamup</h3>
+            <p>Free hosting built for Stremio addons. Deploy with a single command.</p>
             <span class="badge badge-free">Free</span>
           </a>
           <a href="https://www.heroku.com/" class="deploy-card">
-            <h3>🟣 Heroku</h3>
+            <h3>Heroku</h3>
             <p>Cloud platform with managed Node.js hosting and easy scaling.</p>
           </a>
         </div>

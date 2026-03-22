@@ -1,5 +1,6 @@
 import { execFile, spawn } from 'child_process';
 import { writeFileSync, unlinkSync } from 'fs';
+import crypto from 'crypto';
 import { cache } from './cache.js';
 
 const YT_DLP = process.env.YT_DLP_PATH || 'yt-dlp';
@@ -21,8 +22,8 @@ function runYtDlp(args, cookiesStr = null) {
     const fullArgs = [...BASE_ARGS];
 
     if (cookiesStr) {
-      tmpFile = `/tmp/yt-cookies-${Date.now()}-${Math.random().toString(36).slice(2)}.txt`;
-      writeFileSync(tmpFile, cookiesStr, 'utf8');
+      tmpFile = `/tmp/yt-cookies-${crypto.randomBytes(16).toString('hex')}.txt`;
+      writeFileSync(tmpFile, cookiesStr, { encoding: 'utf8', mode: 0o600 });
       fullArgs.push('--cookies', tmpFile);
     }
     fullArgs.push(...args);

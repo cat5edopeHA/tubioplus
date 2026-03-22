@@ -1,9 +1,52 @@
 import crypto from 'crypto';
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
+import { dirname, join } from 'path';
+import { fileURLToPath } from 'url';
 
-const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const KEY_FILE = join(__dirname, '..', '.encryption-key');
 
-// Ensure key is proper length (32 bytes for AES-256)
-const keyBuffer = Buffer.from(ENCRYPTION_KEY.slice(0, 64), 'hex');
+/**
+ * Get or generate the encryption key.
+ * Priority: ENCRYPTION_KEY env var > .encryption-key file > generate new key
+ * This ensures each deployment has a unique key, and it persists across restarts.
+ */
+function loadEncryptionKey() {
+  // 1. Check env var
+  if (process.env.ENCRYPTION_KEY) {
+    const key = process.env.ENCRYPTION_KEY;
+    if (key.length !== 64 || !/^[0-9a-fA-F]+$/.test(key)) {
+      console.error('[config] ENCRYPTION_KEY must be 64 hex characters (32 bytes). Exiting.');
+      process.exit(1);
+    }
+    return Buffer.from(key, 'hex');
+  }
+
+  // 2. Check key file
+  if (existsSync(KEY_FILE)) {
+    const key = readFileSync(KEY_FILE, 'utf8').trim();
+    if (key.length === 64 && /^[0-9a-fA-F]+$/.test(key)) {
+      return Buffer.from(key, 'hex');
+    }
+    console.warn('[config] .encryption-key file is invalid, generating a new one.');
+  }
+
+  // 3. Generate and save a new key
+  const newKey = crypto.randomBytes(32);
+  try {
+    writeFileSync(KEY_FILE, newKey.toString('hex'), { mode: 0o600 });
+    console.log('[config] Generated new encryption key and saved to .encryption-key');
+    console.log('[config] IMPORTANT: Back up this file! If lost, all existing user configs become invalid.');
+  } catch (err) {
+    console.error('[config] Could not write .encryption-key file:', err.message);
+    console.error('[config] Set ENCRYPTION_KEY env var instead. Exiting.');
+    process.exit(1);
+  }
+
+  return newKey;
+}
+
+const keyBuffer = loadEncryptionKey();
 
 export const DEFAULT_CONFIG = {
   cookies: '',
