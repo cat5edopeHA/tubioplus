@@ -9,8 +9,6 @@ const router = express.Router();
 router.get('/', (req, res) => {
   const proto = req.get('x-forwarded-proto') || req.protocol;
   const host = req.get('x-forwarded-host') || req.get('host');
-  const stremioUrl = `stremio://${host}/manifest.json`;
-
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.send(`
     <!DOCTYPE html>
@@ -270,8 +268,7 @@ router.get('/', (req, res) => {
         <h1>Tubio+</h1>
         <p class="tagline">Stream YouTube directly in Stremio.<br>Built for iOS, tvOS, and web.</p>
         <div class="actions">
-          <a href="${stremioUrl}" class="btn btn-primary">Install in Stremio</a>
-          <a href="/configure" class="btn btn-secondary">Configure</a>
+          <a href="/configure" class="btn btn-primary">Get Started</a>
         </div>
       </div>
 
@@ -836,6 +833,14 @@ router.get('/configure', (req, res) => {
     </body>
     </html>
   `);
+});
+
+/**
+ * GET /:config/configure - Stremio's configure button sends users here
+ * Redirect to /configure so the form loads correctly
+ */
+router.get('/:config/configure', (req, res) => {
+  res.redirect('/configure');
 });
 
 export default router;
