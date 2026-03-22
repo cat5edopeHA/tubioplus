@@ -4,12 +4,11 @@ import { encryptConfig, decryptConfig, DEFAULT_CONFIG } from '../config.js';
 const router = express.Router();
 
 /**
- * GET / - Show addon info and installation link
+ * GET / - Landing page
  */
 router.get('/', (req, res) => {
   const proto = req.get('x-forwarded-proto') || req.protocol;
   const host = req.get('x-forwarded-host') || req.get('host');
-  const manifestUrl = `${proto}://${host}/manifest.json`;
   const stremioUrl = `stremio://${host}/manifest.json`;
 
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -19,157 +18,325 @@ router.get('/', (req, res) => {
     <head>
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>YouTube for Stremio</title>
+      <title>Tubio+ — YouTube for Stremio</title>
       <style>
-        * {
-          margin: 0;
-          padding: 0;
-          box-sizing: border-box;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
 
         body {
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          background: #0a0a0f;
+          color: #e0e0e8;
           min-height: 100vh;
+          overflow-x: hidden;
+        }
+
+        body::before {
+          content: '';
+          position: fixed;
+          top: 0; left: 0; right: 0; bottom: 0;
+          background:
+            radial-gradient(ellipse at 20% 50%, rgba(102, 126, 234, 0.12) 0%, transparent 60%),
+            radial-gradient(ellipse at 80% 20%, rgba(118, 75, 162, 0.10) 0%, transparent 50%),
+            radial-gradient(ellipse at 50% 80%, rgba(102, 126, 234, 0.06) 0%, transparent 40%);
+          pointer-events: none;
+          z-index: 0;
+        }
+
+        .hero {
+          position: relative;
+          z-index: 1;
+          text-align: center;
+          padding: 80px 20px 50px;
+          max-width: 700px;
+          margin: 0 auto;
+        }
+
+        .logo {
+          width: 90px;
+          height: 90px;
+          margin: 0 auto 24px;
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          border-radius: 22px;
           display: flex;
           align-items: center;
           justify-content: center;
-          padding: 20px;
-        }
-
-        .container {
-          background: white;
-          border-radius: 12px;
-          box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-          max-width: 500px;
-          width: 100%;
-          padding: 40px;
-          text-align: center;
+          font-size: 44px;
+          box-shadow: 0 8px 32px rgba(102, 126, 234, 0.3);
         }
 
         h1 {
-          color: #333;
-          margin-bottom: 10px;
-          font-size: 28px;
+          font-size: 42px;
+          font-weight: 700;
+          letter-spacing: -0.5px;
+          margin-bottom: 12px;
+          background: linear-gradient(135deg, #fff 0%, #c0c0d0 100%);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          background-clip: text;
         }
 
-        .subtitle {
-          color: #666;
-          margin-bottom: 30px;
-          font-size: 14px;
+        .tagline {
+          font-size: 17px;
+          color: #8888a0;
+          margin-bottom: 40px;
+          line-height: 1.5;
         }
 
-        .icon {
-          width: 80px;
-          height: 80px;
-          margin: 0 auto 20px;
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-          border-radius: 50%;
+        .actions {
           display: flex;
-          align-items: center;
+          gap: 14px;
           justify-content: center;
-          font-size: 40px;
-        }
-
-        .info {
-          background: #f5f5f5;
-          padding: 20px;
-          border-radius: 8px;
-          margin-bottom: 30px;
-          text-align: left;
-          font-size: 13px;
-          color: #666;
-          line-height: 1.6;
-        }
-
-        .info h3 {
-          color: #333;
-          margin-bottom: 10px;
-          font-size: 14px;
-        }
-
-        .info ul {
-          margin-left: 20px;
-        }
-
-        .info li {
-          margin-bottom: 5px;
-        }
-
-        .buttons {
-          display: flex;
-          gap: 10px;
-          flex-direction: column;
+          flex-wrap: wrap;
+          margin-bottom: 60px;
         }
 
         .btn {
-          padding: 12px 24px;
+          padding: 14px 28px;
           border: none;
-          border-radius: 8px;
-          font-size: 14px;
+          border-radius: 10px;
+          font-size: 15px;
           font-weight: 600;
           cursor: pointer;
           text-decoration: none;
-          display: inline-block;
-          transition: all 0.3s ease;
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          transition: all 0.25s ease;
         }
 
         .btn-primary {
           background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
           color: white;
+          box-shadow: 0 4px 16px rgba(102, 126, 234, 0.3);
         }
 
         .btn-primary:hover {
           transform: translateY(-2px);
-          box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+          box-shadow: 0 8px 24px rgba(102, 126, 234, 0.45);
         }
 
         .btn-secondary {
-          background: #f0f0f0;
-          color: #333;
+          background: rgba(255, 255, 255, 0.08);
+          color: #d0d0e0;
+          border: 1px solid rgba(255, 255, 255, 0.1);
         }
 
         .btn-secondary:hover {
-          background: #e0e0e0;
+          background: rgba(255, 255, 255, 0.14);
+          border-color: rgba(255, 255, 255, 0.2);
+        }
+
+        .section {
+          position: relative;
+          z-index: 1;
+          max-width: 800px;
+          margin: 0 auto;
+          padding: 0 20px 60px;
+        }
+
+        .section-title {
+          font-size: 22px;
+          font-weight: 600;
+          margin-bottom: 24px;
+          text-align: center;
+          color: #d0d0e0;
+        }
+
+        .features {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+          gap: 16px;
+          margin-bottom: 60px;
+        }
+
+        .feature {
+          background: rgba(255, 255, 255, 0.04);
+          border: 1px solid rgba(255, 255, 255, 0.06);
+          border-radius: 12px;
+          padding: 24px;
+          transition: all 0.25s ease;
+        }
+
+        .feature:hover {
+          background: rgba(255, 255, 255, 0.07);
+          border-color: rgba(102, 126, 234, 0.2);
+        }
+
+        .feature-icon {
+          font-size: 28px;
+          margin-bottom: 12px;
+        }
+
+        .feature h3 {
+          font-size: 15px;
+          font-weight: 600;
+          margin-bottom: 6px;
+          color: #e0e0f0;
+        }
+
+        .feature p {
+          font-size: 13px;
+          color: #7878a0;
+          line-height: 1.5;
+        }
+
+        .deploy-options {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+          gap: 14px;
+        }
+
+        .deploy-card {
+          background: rgba(255, 255, 255, 0.04);
+          border: 1px solid rgba(255, 255, 255, 0.06);
+          border-radius: 12px;
+          padding: 22px;
+          text-decoration: none;
+          color: inherit;
+          transition: all 0.25s ease;
+        }
+
+        .deploy-card:hover {
+          background: rgba(255, 255, 255, 0.07);
+          border-color: rgba(102, 126, 234, 0.25);
+          transform: translateY(-2px);
+        }
+
+        .deploy-card h3 {
+          font-size: 15px;
+          font-weight: 600;
+          margin-bottom: 6px;
+          color: #e0e0f0;
+        }
+
+        .deploy-card p {
+          font-size: 12px;
+          color: #7878a0;
+          line-height: 1.4;
+        }
+
+        .deploy-card .badge {
+          display: inline-block;
+          font-size: 10px;
+          font-weight: 600;
+          padding: 2px 8px;
+          border-radius: 4px;
+          margin-top: 8px;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        }
+
+        .badge-rec {
+          background: rgba(102, 126, 234, 0.15);
+          color: #8899ee;
+        }
+
+        .badge-free {
+          background: rgba(46, 204, 113, 0.15);
+          color: #5cd88a;
+        }
+
+        .footer {
+          position: relative;
+          z-index: 1;
+          text-align: center;
+          padding: 40px 20px;
+          font-size: 13px;
+          color: #505068;
+          border-top: 1px solid rgba(255, 255, 255, 0.04);
+        }
+
+        .footer a {
+          color: #667eea;
+          text-decoration: none;
+        }
+
+        .footer a:hover {
+          text-decoration: underline;
         }
 
         @media (max-width: 600px) {
-          .container {
-            padding: 30px 20px;
-          }
-
-          h1 {
-            font-size: 24px;
-          }
-
-          .btn {
-            padding: 10px 16px;
-            font-size: 13px;
-          }
+          .hero { padding: 50px 20px 30px; }
+          h1 { font-size: 30px; }
+          .tagline { font-size: 15px; }
+          .actions { flex-direction: column; align-items: center; }
+          .btn { width: 100%; max-width: 280px; justify-content: center; }
         }
       </style>
     </head>
     <body>
-      <div class="container">
-        <div class="icon">▶️</div>
-        <h1>YouTube for Stremio</h1>
-        <p class="subtitle">Stream YouTube videos directly in Stremio Lite</p>
-
-        <div class="info">
-          <h3>Features</h3>
-          <ul>
-            <li>🎬 Stream YouTube videos in Stremio</li>
-            <li>📺 Works on iOS, tvOS, and web</li>
-            <li>🔍 Search, trending, subscriptions, history</li>
-            <li>⚙️ Configure quality and features</li>
-          </ul>
+      <div class="hero">
+        <div class="logo">▶</div>
+        <h1>Tubio+</h1>
+        <p class="tagline">Stream YouTube directly in Stremio.<br>Built for iOS, tvOS, and web.</p>
+        <div class="actions">
+          <a href="${stremioUrl}" class="btn btn-primary">Install in Stremio</a>
+          <a href="/configure" class="btn btn-secondary">Configure</a>
         </div>
+      </div>
 
-        <div class="buttons">
-          <a href="${stremioUrl}" class="btn btn-primary">📲 Install in Stremio</a>
-          <a href="/configure/configure" class="btn btn-secondary">⚙️ Configure</a>
+      <div class="section">
+        <div class="features">
+          <div class="feature">
+            <div class="feature-icon">🔍</div>
+            <h3>Search & Discover</h3>
+            <p>Search YouTube, browse recommendations, and explore trending content.</p>
+          </div>
+          <div class="feature">
+            <div class="feature-icon">📺</div>
+            <h3>Your Library</h3>
+            <p>Access subscriptions, watch history, and watch later with cookie auth.</p>
+          </div>
+          <div class="feature">
+            <div class="feature-icon">🎬</div>
+            <h3>Up to 1080p</h3>
+            <p>H.264 streams muxed on-the-fly for full iOS and tvOS compatibility.</p>
+          </div>
+          <div class="feature">
+            <div class="feature-icon">🚫</div>
+            <h3>SponsorBlock</h3>
+            <p>Skip sponsors, intros, outros, and filler automatically.</p>
+          </div>
+          <div class="feature">
+            <div class="feature-icon">🏷️</div>
+            <h3>DeArrow</h3>
+            <p>Community-sourced titles and thumbnails — no more clickbait.</p>
+          </div>
+          <div class="feature">
+            <div class="feature-icon">🔒</div>
+            <h3>Private</h3>
+            <p>Self-hosted. Your cookies and config are encrypted end-to-end.</p>
+          </div>
         </div>
+      </div>
 
+      <div class="section">
+        <h2 class="section-title">Deploy Your Own</h2>
+        <div class="deploy-options">
+          <a href="https://github.com/cat5edopeHA/tubiopp#deploy-with-docker" class="deploy-card">
+            <h3>🐳 Docker</h3>
+            <p>One command to run anywhere. Includes yt-dlp and FFmpeg.</p>
+            <span class="badge badge-rec">Recommended</span>
+          </a>
+          <a href="https://github.com/cat5edopeHA/tubiopp#node" class="deploy-card">
+            <h3>📦 Node.js</h3>
+            <p>Clone the repo and run directly. Requires Node 18+, yt-dlp, and FFmpeg.</p>
+          </a>
+          <a href="https://github.com/niconiahi/stremio-addon-sdk-beamup" class="deploy-card">
+            <h3>☁️ Beamup</h3>
+            <p>Free hosting built for Stremio addons. Zero config deployment.</p>
+            <span class="badge badge-free">Free</span>
+          </a>
+          <a href="https://www.heroku.com/" class="deploy-card">
+            <h3>🟣 Heroku</h3>
+            <p>Cloud platform with managed Node.js hosting and easy scaling.</p>
+          </a>
+        </div>
+      </div>
+
+      <div class="footer">
+        Inspired by <a href="https://github.com/xXCrash2BomberXx/YouTubio">YouTubio</a> &middot;
+        <a href="https://github.com/cat5edopeHA/tubiopp">GitHub</a>
       </div>
     </body>
     </html>
@@ -191,11 +358,9 @@ router.post('/api/encrypt', (req, res) => {
 });
 
 /**
- * GET /configure - Show configuration page
+ * GET /configure - Configuration form
  */
 router.get('/configure', (req, res) => {
-  const defaultConfigStr = encryptConfig(DEFAULT_CONFIG);
-
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.send(`
     <!DOCTYPE html>
@@ -203,61 +368,87 @@ router.get('/configure', (req, res) => {
     <head>
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Configure YouTube for Stremio</title>
+      <title>Configure — Tubio+</title>
       <style>
-        * {
-          margin: 0;
-          padding: 0;
-          box-sizing: border-box;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
 
         body {
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-          background: #f5f5f5;
-          padding: 20px;
+          background: #0a0a0f;
+          color: #e0e0e8;
+          min-height: 100vh;
+          padding: 40px 20px;
+        }
+
+        body::before {
+          content: '';
+          position: fixed;
+          top: 0; left: 0; right: 0; bottom: 0;
+          background:
+            radial-gradient(ellipse at 20% 50%, rgba(102, 126, 234, 0.08) 0%, transparent 60%),
+            radial-gradient(ellipse at 80% 20%, rgba(118, 75, 162, 0.06) 0%, transparent 50%);
+          pointer-events: none;
+          z-index: 0;
         }
 
         .container {
-          max-width: 600px;
+          position: relative;
+          z-index: 1;
+          max-width: 560px;
           margin: 0 auto;
-          background: white;
-          border-radius: 12px;
-          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-          padding: 30px;
+          background: rgba(255, 255, 255, 0.04);
+          border: 1px solid rgba(255, 255, 255, 0.06);
+          border-radius: 16px;
+          padding: 36px;
         }
 
+        .back-link {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          color: #8888a0;
+          text-decoration: none;
+          font-size: 13px;
+          margin-bottom: 24px;
+          transition: color 0.2s;
+        }
+
+        .back-link:hover { color: #667eea; }
+
         h1 {
-          color: #333;
-          margin-bottom: 30px;
           font-size: 24px;
+          font-weight: 700;
+          margin-bottom: 32px;
           text-align: center;
+          background: linear-gradient(135deg, #fff 0%, #c0c0d0 100%);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          background-clip: text;
         }
 
         .form-section {
-          margin-bottom: 30px;
-          padding-bottom: 30px;
-          border-bottom: 1px solid #eee;
+          margin-bottom: 28px;
+          padding-bottom: 28px;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.06);
         }
 
-        .form-section:last-child {
-          border-bottom: none;
-        }
+        .form-section:last-of-type { border-bottom: none; }
 
         .form-section h2 {
-          color: #555;
-          font-size: 16px;
-          margin-bottom: 15px;
+          color: #b0b0c8;
+          font-size: 14px;
           font-weight: 600;
+          margin-bottom: 14px;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
         }
 
-        .form-group {
-          margin-bottom: 15px;
-        }
+        .form-group { margin-bottom: 14px; }
 
         label {
           display: block;
-          margin-bottom: 8px;
-          color: #333;
+          margin-bottom: 6px;
+          color: #c0c0d8;
           font-size: 13px;
           font-weight: 500;
         }
@@ -267,32 +458,46 @@ router.get('/configure', (req, res) => {
         select,
         textarea {
           width: 100%;
-          padding: 10px;
-          border: 1px solid #ddd;
-          border-radius: 6px;
+          padding: 10px 12px;
+          background: rgba(255, 255, 255, 0.06);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          border-radius: 8px;
           font-size: 13px;
           font-family: inherit;
+          color: #e0e0e8;
+          transition: border-color 0.2s, box-shadow 0.2s;
         }
 
         textarea {
-          min-height: 150px;
+          min-height: 130px;
           resize: vertical;
           font-family: 'Monaco', 'Courier New', monospace;
         }
 
-        input[type="text"]:focus,
-        input[type="number"]:focus,
-        select:focus,
-        textarea:focus {
+        select {
+          appearance: none;
+          cursor: pointer;
+          background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%238888a0'/%3E%3C/svg%3E");
+          background-repeat: no-repeat;
+          background-position: right 12px center;
+          padding-right: 32px;
+        }
+
+        select option {
+          background: #1a1a2e;
+          color: #e0e0e8;
+        }
+
+        input:focus, select:focus, textarea:focus {
           outline: none;
-          border-color: #667eea;
+          border-color: rgba(102, 126, 234, 0.5);
           box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
         }
 
         .form-help {
           font-size: 12px;
-          color: #999;
-          margin-top: 5px;
+          color: #6868888;
+          margin-top: 6px;
         }
 
         .checkbox-group {
@@ -307,120 +512,158 @@ router.get('/configure', (req, res) => {
           gap: 8px;
         }
 
-        .checkbox-item input {
-          width: auto;
-          margin: 0;
+        .checkbox-item input[type="checkbox"] {
+          width: 16px;
+          height: 16px;
+          accent-color: #667eea;
+          cursor: pointer;
         }
 
         .checkbox-item label {
           margin: 0;
           display: inline;
+          cursor: pointer;
+          color: #c0c0d8;
+        }
+
+        .sb-categories {
+          margin-top: 14px;
+          padding: 16px;
+          background: rgba(255, 255, 255, 0.03);
+          border: 1px solid rgba(255, 255, 255, 0.05);
+          border-radius: 8px;
+          display: none;
+        }
+
+        .sb-categories > label {
+          margin-bottom: 10px;
+          font-weight: 600;
+          color: #b0b0c8;
         }
 
         .buttons {
           display: flex;
           gap: 10px;
-          margin-top: 30px;
+          margin-top: 32px;
         }
 
         .btn {
           flex: 1;
-          padding: 12px;
+          padding: 13px;
           border: none;
-          border-radius: 8px;
+          border-radius: 10px;
           font-size: 14px;
           font-weight: 600;
           cursor: pointer;
-          transition: all 0.3s ease;
+          transition: all 0.25s ease;
         }
 
         .btn-primary {
           background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
           color: white;
+          box-shadow: 0 4px 16px rgba(102, 126, 234, 0.25);
         }
 
         .btn-primary:hover {
           transform: translateY(-2px);
-          box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+          box-shadow: 0 8px 24px rgba(102, 126, 234, 0.4);
         }
 
         .btn-secondary {
-          background: #f0f0f0;
-          color: #333;
+          background: rgba(255, 255, 255, 0.08);
+          color: #c0c0d8;
+          border: 1px solid rgba(255, 255, 255, 0.1);
         }
 
         .btn-secondary:hover {
-          background: #e0e0e0;
+          background: rgba(255, 255, 255, 0.14);
         }
 
         .config-link {
-          margin-top: 30px;
-          padding: 15px;
-          background: #f0f4ff;
-          border-radius: 8px;
-          border-left: 4px solid #667eea;
+          margin-top: 28px;
+          padding: 18px;
+          background: rgba(102, 126, 234, 0.08);
+          border-radius: 10px;
+          border: 1px solid rgba(102, 126, 234, 0.15);
         }
 
         .config-link label {
-          margin-bottom: 5px;
+          margin-bottom: 6px;
+          color: #9898b8;
+          font-size: 12px;
         }
 
         .config-value {
           word-break: break-all;
           font-family: 'Monaco', 'Courier New', monospace;
           font-size: 11px;
-          color: #666;
-          background: white;
+          color: #8888a0;
+          background: rgba(0, 0, 0, 0.3);
           padding: 10px;
-          border-radius: 4px;
+          border-radius: 6px;
           margin-top: 8px;
-          max-height: 100px;
+          max-height: 80px;
           overflow-y: auto;
         }
 
         .copy-btn {
-          padding: 6px 12px;
-          background: #667eea;
-          color: white;
-          border: none;
-          border-radius: 4px;
+          padding: 6px 14px;
+          background: rgba(102, 126, 234, 0.2);
+          color: #8899ee;
+          border: 1px solid rgba(102, 126, 234, 0.2);
+          border-radius: 6px;
           font-size: 12px;
           cursor: pointer;
           margin-top: 8px;
+          transition: all 0.2s;
         }
 
         .copy-btn:hover {
-          background: #5568d3;
+          background: rgba(102, 126, 234, 0.3);
         }
 
         .success {
-          color: #28a745;
+          color: #5cd88a;
           font-size: 12px;
-          margin-top: 5px;
+          margin-top: 6px;
+        }
+
+        .install-btn {
+          display: block;
+          text-align: center;
+          margin-bottom: 14px;
+          text-decoration: none;
+          padding: 13px;
+          border-radius: 10px;
+          font-size: 15px;
+          font-weight: 600;
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          color: white;
+          box-shadow: 0 4px 16px rgba(102, 126, 234, 0.25);
+          transition: all 0.25s;
+        }
+
+        .install-btn:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 8px 24px rgba(102, 126, 234, 0.4);
         }
 
         @media (max-width: 600px) {
-          .container {
-            padding: 20px;
-          }
-
-          h1 {
-            font-size: 20px;
-          }
-
-          .buttons {
-            flex-direction: column;
-          }
+          body { padding: 20px 12px; }
+          .container { padding: 24px 18px; }
+          h1 { font-size: 20px; }
+          .buttons { flex-direction: column; }
         }
       </style>
     </head>
     <body>
       <div class="container">
-        <h1>⚙️ Configure YouTube for Stremio</h1>
+        <a href="/" class="back-link">← Back</a>
+        <h1>Configure Tubio+</h1>
 
         <form id="configForm">
           <div class="form-section">
-            <h2>YouTube Authentication (Optional)</h2>
+            <h2>YouTube Authentication</h2>
             <div class="form-group">
               <label for="cookies">Cookies (Netscape Format)</label>
               <textarea id="cookies" name="cookies" placeholder="Paste your YouTube cookies here to access subscriptions, history, and watch later..."></textarea>
@@ -443,17 +686,17 @@ router.get('/configure', (req, res) => {
           </div>
 
           <div class="form-section">
-            <h2>SponsorBlock (Ad Skipping)</h2>
+            <h2>SponsorBlock</h2>
             <div class="form-group">
               <div class="checkbox-item">
                 <input type="checkbox" id="sbEnabled" name="sbEnabled">
                 <label for="sbEnabled">Enable SponsorBlock</label>
               </div>
-              <div class="form-help">Skip sponsor segments and other content in videos</div>
+              <div class="form-help">Skip sponsor segments and other non-content automatically</div>
             </div>
 
-            <div id="sbCategories" style="margin-top: 15px; padding: 15px; background: #f9f9f9; border-radius: 6px; display: none;">
-              <label style="margin-bottom: 10px; display: block; font-weight: 600;">Skip these segment types:</label>
+            <div id="sbCategories" class="sb-categories">
+              <label>Skip these segment types:</label>
               <div class="checkbox-group">
                 <div class="checkbox-item">
                   <input type="checkbox" id="sbSponsor" name="sbCategories" value="sponsor" checked>
@@ -477,7 +720,7 @@ router.get('/configure', (req, res) => {
                 </div>
                 <div class="checkbox-item">
                   <input type="checkbox" id="sbPreview" name="sbCategories" value="preview">
-                  <label for="sbPreview">Preview/Recap</label>
+                  <label for="sbPreview">Preview / Recap</label>
                 </div>
                 <div class="checkbox-item">
                   <input type="checkbox" id="sbMusic" name="sbCategories" value="music_offtopic">
@@ -492,28 +735,28 @@ router.get('/configure', (req, res) => {
           </div>
 
           <div class="form-section">
-            <h2>DeArrow (Community Titles & Thumbnails)</h2>
+            <h2>DeArrow</h2>
             <div class="form-group">
               <div class="checkbox-item">
                 <input type="checkbox" id="dearrowEnabled" name="dearrowEnabled">
                 <label for="dearrowEnabled">Enable DeArrow</label>
               </div>
-              <div class="form-help">Use community-created titles and thumbnails instead of YouTube's clickbait</div>
+              <div class="form-help">Replace clickbait with community-sourced titles and thumbnails</div>
             </div>
           </div>
 
           <div class="buttons">
-            <button type="submit" class="btn btn-primary">💾 Save & Generate Config</button>
-            <button type="button" class="btn btn-secondary" onclick="resetForm()">↺ Reset to Defaults</button>
+            <button type="submit" class="btn btn-primary">Save & Install</button>
+            <button type="button" class="btn btn-secondary" onclick="resetForm()">Reset</button>
           </div>
         </form>
 
         <div id="configLink" class="config-link" style="display: none;">
-          <a id="installLink" href="#" class="btn btn-primary" style="display:block;text-align:center;margin-bottom:15px;text-decoration:none;">📲 Install in Stremio</a>
-          <label>📋 Your Manifest URL:</label>
+          <a id="installLink" href="#" class="install-btn">Install in Stremio</a>
+          <label>Manifest URL:</label>
           <div class="config-value" id="configValue"></div>
-          <button type="button" class="copy-btn" onclick="copyConfig()">📋 Copy URL</button>
-          <div id="copySuccess" class="success" style="display: none;">✓ Copied to clipboard!</div>
+          <button type="button" class="copy-btn" onclick="copyConfig()">Copy URL</button>
+          <div id="copySuccess" class="success" style="display: none;">Copied!</div>
         </div>
       </div>
 
@@ -523,7 +766,6 @@ router.get('/configure', (req, res) => {
         const sbCategories = document.getElementById('sbCategories');
 
         function loadConfig() {
-          // Defaults are already set in the HTML
           updateSBCategoriesVisibility();
         }
 
@@ -551,7 +793,6 @@ router.get('/configure', (req, res) => {
             }
           };
 
-          // Generate encrypted config via server
           const configStr = await generateConfig(config);
           const manifestUrl = window.location.origin + '/' + configStr + '/manifest.json';
           const stremioInstallUrl = 'stremio://' + window.location.host + '/' + configStr + '/manifest.json';
@@ -571,7 +812,7 @@ router.get('/configure', (req, res) => {
         }
 
         async function generateConfig(config) {
-          const resp = await fetch('/configure/api/encrypt', {
+          const resp = await fetch('/api/encrypt', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(config)
@@ -590,7 +831,6 @@ router.get('/configure', (req, res) => {
           });
         }
 
-        // Load config on page load
         loadConfig();
       </script>
     </body>

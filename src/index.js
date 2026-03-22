@@ -47,16 +47,9 @@ app.get(['/:config/manifest.json', '/manifest.json'], (req, res) => {
 });
 
 /**
- * GET / - Root, redirect to configure
+ * Landing page, configure, and API routes
  */
-app.get('/', (req, res) => {
-  res.redirect('/configure');
-});
-
-/**
- * Configure routes
- */
-app.use('/configure', configureRouter);
+app.use('/', configureRouter);
 
 /**
  * API routes with config parameter
