@@ -18,21 +18,29 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // --- Rate Limiting ---
-// Play endpoint: heaviest (spawns FFmpeg), strict limit
-const playLimiter = rateLimit({ windowMs: 60_000, max: 15, message: 'Too many play requests, please slow down.' });
-// API encrypt endpoint: prevent brute-force config abuse
-const encryptLimiter = rateLimit({ windowMs: 60_000, max: 10, message: 'Too many encrypt requests, please slow down.' });
-// Stremio API endpoints (stream, catalog, meta): moderate limit
-const apiLimiter = rateLimit({ windowMs: 60_000, max: 60 });
-// Global fallback: generous overall limit (skipped if a specific limiter already ran)
-const globalLimiter = rateLimit({ windowMs: 60_000, max: 120, isGlobal: true });
+// RATE_LIMIT env: "true"/"on"/"1" = enabled (default), "false"/"off"/"0" = disabled
+const rateLimitEnabled = !['false', 'off', '0'].includes((process.env.RATE_LIMIT || 'on').toLowerCase());
 
-app.use('/play', playLimiter);
-app.use('/api/encrypt', encryptLimiter);
-app.use('/:config/stream', apiLimiter);
-app.use('/:config/catalog', apiLimiter);
-app.use('/:config/meta', apiLimiter);
-app.use(globalLimiter);
+if (rateLimitEnabled) {
+  // Play endpoint: heaviest (spawns FFmpeg), strict limit
+  const playLimiter = rateLimit({ windowMs: 60_000, max: 15, message: 'Too many play requests, please slow down.' });
+  // API encrypt endpoint: prevent brute-force config abuse
+  const encryptLimiter = rateLimit({ windowMs: 60_000, max: 10, message: 'Too many encrypt requests, please slow down.' });
+  // Stremio API endpoints (stream, catalog, meta): moderate limit
+  const apiLimiter = rateLimit({ windowMs: 60_000, max: 60 });
+  // Global fallback: generous overall limit (skipped if a specific limiter already ran)
+  const globalLimiter = rateLimit({ windowMs: 60_000, max: 120, isGlobal: true });
+
+  app.use('/play', playLimiter);
+  app.use('/api/encrypt', encryptLimiter);
+  app.use('/:config/stream', apiLimiter);
+  app.use('/:config/catalog', apiLimiter);
+  app.use('/:config/meta', apiLimiter);
+  app.use(globalLimiter);
+  console.log('[config] Rate limiting: ENABLED');
+} else {
+  console.log('[config] Rate limiting: DISABLED (RATE_LIMIT=' + process.env.RATE_LIMIT + ')');
+}
 
 // Request logging
 app.use((req, res, next) => {
