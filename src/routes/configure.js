@@ -295,6 +295,18 @@ router.get('/', (req, res) => {
         </div>
       </div>
 
+      <div class="section">
+        <div class="about" style="font-size: 13px; line-height: 1.7; color: #6868888;">
+          <strong style="color: #b0b0c8;">Privacy Notice:</strong>
+          If you are using a public instance of Tubio+, the server operator can access your
+          decrypted cookies when making YouTube requests on your behalf. This is a fundamental
+          limitation of any proxy-based service — the server must have your credentials to act
+          on your behalf. Your config is AES-256 encrypted in the URL so it cannot be read
+          casually, but the server decrypts it on every request. For full control over your
+          data, self-host your own instance.
+        </div>
+      </div>
+
       <div class="footer">
         Inspired by <a href="https://github.com/xXCrash2BomberXx/YouTubio">YouTubio</a> &middot;
         <a href="https://github.com/cat5edopeHA/tubiopp">GitHub</a>
@@ -629,6 +641,7 @@ router.get('/configure', (req, res) => {
               <label for="cookies">Cookies (Netscape Format)</label>
               <textarea id="cookies" name="cookies" placeholder="Paste your YouTube cookies here to access subscriptions, history, and watch later..."></textarea>
               <div class="form-help">Export cookies from your browser using an extension like "Get cookies.txt LOCALLY"</div>
+              <div class="form-help" style="margin-top: 8px; color: #9878a0;">If you are using a public instance, the server operator can access your cookies when making YouTube requests on your behalf. Self-host for full privacy.</div>
             </div>
           </div>
 
