@@ -278,7 +278,7 @@ router.get('/', (req, res) => {
       <div class="section">
         <h2 class="section-title">Deploy Your Own</h2>
         <div class="deploy-options">
-          <a href="https://github.com/cat5edopeHA/tubiopp" class="deploy-card">
+          <a href="https://github.com/cat5edopeHA/tubioplus" class="deploy-card">
             <h3>Self-Hosted</h3>
             <p>Run with Docker or Node.js directly. Requires yt-dlp and FFmpeg.</p>
             <span class="badge badge-rec">Recommended</span>
@@ -309,7 +309,7 @@ router.get('/', (req, res) => {
 
       <div class="footer">
         Inspired by <a href="https://github.com/xXCrash2BomberXx/YouTubio">YouTubio</a> &middot;
-        <a href="https://github.com/cat5edopeHA/tubiopp">GitHub</a>
+        <a href="https://github.com/cat5edopeHA/tubioplus">GitHub</a>
         <br><span style="margin-top: 8px; display: inline-block; opacity: 0.6;">vibe coded with love &hearts;</span>
       </div>
     </body>
@@ -810,7 +810,7 @@ router.get('/configure', (req, res) => {
       </script>
 
       <div style="text-align: center; padding: 40px 20px; font-size: 13px; color: #505068; border-top: 1px solid rgba(255, 255, 255, 0.04);">
-        <a href="https://github.com/cat5edopeHA/tubiopp" style="color: #667eea; text-decoration: none;">GitHub</a>
+        <a href="https://github.com/cat5edopeHA/tubioplus" style="color: #667eea; text-decoration: none;">GitHub</a>
         <br><span style="margin-top: 8px; display: inline-block; opacity: 0.6;">vibe coded with love &hearts;</span>
       </div>
     </body>
