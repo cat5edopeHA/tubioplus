@@ -40,6 +40,17 @@ npm install
 npm start
 ```
 
+## Branches
+
+| Branch | Purpose | Key Differences |
+|--------|---------|------------------|
+| `main` | Stable release | Rate limiting ON by default, catalogs return 20 videos (no pagination) |
+| `testing` | Experimental features | Rate limiting OFF by default, catalog pagination (loads 20 initially, then 10 more per scroll, up to 100), increased yt-dlp timeout |
+
+Set `RATE_LIMIT=on` or `RATE_LIMIT=off` via environment variable to override the default for either branch.
+
+Set `CATALOG_LIMIT` to control the maximum number of videos fetched per catalog (default: 100 on testing, 20 on main).
+
 ## Privacy
 
 Your config (including cookies) is AES-256 encrypted with a unique key generated per deployment. However, the server decrypts cookies on every request to make YouTube API calls on your behalf. This is a fundamental limitation of any proxy-based service. For full control over your data, self-host your own instance.

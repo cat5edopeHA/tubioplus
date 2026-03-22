@@ -11,10 +11,8 @@ export const manifest = {
       id: 'yt:recommendations',
       name: 'Recommended',
       extra: [
-        {
-          name: 'search',
-          isRequired: false
-        }
+        { name: 'search', isRequired: false },
+        { name: 'skip', isRequired: false }
       ]
     },
     {
@@ -22,10 +20,8 @@ export const manifest = {
       id: 'yt:search',
       name: 'YouTube Search',
       extra: [
-        {
-          name: 'search',
-          isRequired: true
-        }
+        { name: 'search', isRequired: true },
+        { name: 'skip', isRequired: false }
       ]
     },
     {
@@ -33,10 +29,8 @@ export const manifest = {
       id: 'yt:subscriptions',
       name: 'Your Subscriptions',
       extra: [
-        {
-          name: 'search',
-          isRequired: false
-        }
+        { name: 'search', isRequired: false },
+        { name: 'skip', isRequired: false }
       ]
     },
     {
@@ -44,10 +38,8 @@ export const manifest = {
       id: 'yt:history',
       name: 'Watch History',
       extra: [
-        {
-          name: 'search',
-          isRequired: false
-        }
+        { name: 'search', isRequired: false },
+        { name: 'skip', isRequired: false }
       ]
     },
     {
@@ -55,10 +47,8 @@ export const manifest = {
       id: 'yt:watchlater',
       name: 'Watch Later',
       extra: [
-        {
-          name: 'search',
-          isRequired: false
-        }
+        { name: 'search', isRequired: false },
+        { name: 'skip', isRequired: false }
       ]
     }
   ],

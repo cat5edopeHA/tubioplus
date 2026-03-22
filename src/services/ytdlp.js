@@ -35,7 +35,7 @@ function runYtDlp(args, cookiesStr = null) {
     execFile(YT_DLP, fullArgs, {
       encoding: 'utf8',
       maxBuffer: 20 * 1024 * 1024,
-      timeout: 45000
+      timeout: 90000
     }, (err, stdout, stderr) => {
       cleanup();
       if (err) {
@@ -82,9 +82,13 @@ export async function getFreshVideoInfo(videoId) {
 }
 
 /**
- * Search YouTube
+ * Search YouTube — fetches up to CATALOG_LIMIT results, paginated by catalog route
  */
-export async function searchYouTube(query, limit = 20) {
+const CATALOG_LIMIT = parseInt(process.env.CATALOG_LIMIT) || 100;
+
+export { CATALOG_LIMIT };
+
+export async function searchYouTube(query, limit = CATALOG_LIMIT) {
   const cacheKey = `search:${query}:${limit}`;
   const cached = cache.get(cacheKey);
   if (cached) return cached;
@@ -113,7 +117,7 @@ export async function getRecommendations(cookiesStr) {
   if (cookiesStr) {
     try {
       const result = await runYtDlp(
-        ['--flat-playlist', '--playlist-end', '25', 'https://www.youtube.com/'],
+        ['--flat-playlist', '--playlist-end', String(CATALOG_LIMIT), 'https://www.youtube.com/'],
         cookiesStr
       );
       const entries = result.entries || [];
@@ -128,7 +132,7 @@ export async function getRecommendations(cookiesStr) {
 
   // Fallback: popular content search
   try {
-    const result = await runYtDlp(['--flat-playlist', 'ytsearch25:popular videos today']);
+    const result = await runYtDlp(['--flat-playlist', `ytsearch${CATALOG_LIMIT}:popular videos today`]);
     const entries = result.entries || [];
     if (entries.length > 0) {
       cache.set(cacheKey, entries, 600);
@@ -150,7 +154,7 @@ export async function getSubscriptions(cookiesStr) {
   if (cached) return cached;
 
   try {
-    const result = await runYtDlp(['--flat-playlist', '--playlist-end', '25', 'https://www.youtube.com/feed/subscriptions'], cookiesStr);
+    const result = await runYtDlp(['--flat-playlist', '--playlist-end', String(CATALOG_LIMIT), 'https://www.youtube.com/feed/subscriptions'], cookiesStr);
     const entries = result.entries || [];
     cache.set(cacheKey, entries, 300);
     return entries;
@@ -169,7 +173,7 @@ export async function getHistory(cookiesStr) {
   if (cached) return cached;
 
   try {
-    const result = await runYtDlp(['--flat-playlist', '--playlist-end', '25', 'https://www.youtube.com/feed/history'], cookiesStr);
+    const result = await runYtDlp(['--flat-playlist', '--playlist-end', String(CATALOG_LIMIT), 'https://www.youtube.com/feed/history'], cookiesStr);
     const entries = result.entries || [];
     cache.set(cacheKey, entries, 300);
     return entries;
@@ -188,7 +192,7 @@ export async function getWatchLater(cookiesStr) {
   if (cached) return cached;
 
   try {
-    const result = await runYtDlp(['--flat-playlist', '--playlist-end', '25', 'https://www.youtube.com/playlist?list=WL'], cookiesStr);
+    const result = await runYtDlp(['--flat-playlist', '--playlist-end', String(CATALOG_LIMIT), 'https://www.youtube.com/playlist?list=WL'], cookiesStr);
     const entries = result.entries || [];
     cache.set(cacheKey, entries, 300);
     return entries;

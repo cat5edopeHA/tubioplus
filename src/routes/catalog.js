@@ -1,9 +1,14 @@
 import express from 'express';
 import { decryptConfig, mergeConfig } from '../config.js';
 import * as ytdlp from '../services/ytdlp.js';
+import { CATALOG_LIMIT } from '../services/ytdlp.js';
 import { getDeArrowBranding } from '../services/dearrow.js';
 
 const router = express.Router();
+
+// Pagination: first page loads more, subsequent pages load smaller batches
+const FIRST_PAGE_SIZE = 20;
+const NEXT_PAGE_SIZE = 10;
 
 /**
  * Extract video ID from various YouTube URL formats
@@ -71,6 +76,17 @@ router.get('/:config/catalog/:type/:id/:extra?.json', async (req, res) => {
     const extra = parseExtra(req.params.extra);
     const config = mergeConfig(decryptConfig(configStr));
 
+    // Pagination: parse skip from extra params
+    const skip = Math.max(0, parseInt(extra.skip) || 0);
+
+    // If skip is beyond the hard limit, stop paginating
+    if (skip >= CATALOG_LIMIT) {
+      return res.json({ metas: [] });
+    }
+
+    // Determine page size: first page (skip=0) gets more, subsequent pages get smaller batches
+    const pageSize = skip === 0 ? FIRST_PAGE_SIZE : NEXT_PAGE_SIZE;
+
     let entries = [];
 
     if (id === 'yt:recommendations') {
@@ -78,7 +94,7 @@ router.get('/:config/catalog/:type/:id/:extra?.json', async (req, res) => {
     } else if (id === 'yt:search') {
       const query = extra.search;
       if (!query) return res.json({ metas: [] });
-      entries = await ytdlp.searchYouTube(query, 20);
+      entries = await ytdlp.searchYouTube(query);
     } else if (id === 'yt:subscriptions') {
       if (!config.cookies) return res.json({ metas: [] });
       entries = await ytdlp.getSubscriptions(config.cookies);
@@ -92,9 +108,19 @@ router.get('/:config/catalog/:type/:id/:extra?.json', async (req, res) => {
       return res.json({ metas: [] });
     }
 
-    // Convert entries to meta previews (process in parallel, max 20)
-    const metaPromises = entries.slice(0, 20).map(e => entryToMeta(e, config));
+    // Slice the page from the full cached result set
+    const page = entries.slice(skip, skip + pageSize);
+
+    // If no entries in this page, stop paginating
+    if (page.length === 0) {
+      return res.json({ metas: [] });
+    }
+
+    // Convert entries to meta previews (process in parallel)
+    const metaPromises = page.map(e => entryToMeta(e, config));
     const metas = (await Promise.all(metaPromises)).filter(Boolean);
+
+    console.log(`[catalog] ${id} skip=${skip} pageSize=${pageSize} returned=${metas.length}/${entries.length} total`);
 
     res.json({ metas });
   } catch (err) {
