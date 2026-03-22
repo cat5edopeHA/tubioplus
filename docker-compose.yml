@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  yt-stremio:
+    build: .
+    container_name: yt-stremio
+    ports:
+      - "8000:8000"
+    environment:
+      PORT: 8000
+      NODE_ENV: production
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}
+    restart: unless-stopped
+    networks:
+      - stremio-network
+
+networks:
+  stremio-network:
+    driver: bridge

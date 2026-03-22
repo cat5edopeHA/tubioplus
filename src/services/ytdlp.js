@@ -1,0 +1,169 @@
+import { execFileSync, spawn } from 'child_process';
+import { writeFileSync, unlinkSync } from 'fs';
+import { cache } from './cache.js';
+
+const YT_DLP = process.env.YT_DLP_PATH || 'yt-dlp';
+
+// Common yt-dlp args
+const BASE_ARGS = [
+  '--no-warnings', '--no-cache-dir', '--no-playlist',
+  '-J', '--js-runtimes', 'node',
+  '--extractor-args', 'generic:impersonate',
+  '--ignore-no-formats-error'
+];
+
+/**
+ * Run yt-dlp safely (no shell injection)
+ */
+function runYtDlp(args, cookiesStr = null) {
+  let tmpFile = null;
+  try {
+    const fullArgs = [...BASE_ARGS];
+    if (cookiesStr) {
+      tmpFile = `/tmp/yt-cookies-${Date.now()}-${Math.random().toString(36).slice(2)}.txt`;
+      writeFileSync(tmpFile, cookiesStr, 'utf8');
+      fullArgs.push('--cookies', tmpFile);
+    }
+    fullArgs.push(...args);
+    const output = execFileSync(YT_DLP, fullArgs, {
+      encoding: 'utf8',
+      maxBuffer: 20 * 1024 * 1024,
+      timeout: 60000
+    });
+    return JSON.parse(output);
+  } finally {
+    if (tmpFile) try { unlinkSync(tmpFile); } catch {}
+  }
+}
+
+/**
+ * Get video info (cached - for metadata only, NOT for stream URLs)
+ */
+export async function getVideoInfo(videoId) {
+  const cacheKey = `info:${videoId}`;
+  const cached = cache.get(cacheKey);
+  if (cached) return cached;
+
+  try {
+    const info = runYtDlp([`https://www.youtube.com/watch?v=${videoId}`]);
+    cache.set(cacheKey, info, 3600);
+    return info;
+  } catch (err) {
+    console.error(`[ytdlp] Error getting info for ${videoId}:`, err.message?.slice(0, 200));
+    return null;
+  }
+}
+
+/**
+ * Get FRESH video info (no cache - for play endpoint where URLs must be current)
+ */
+export async function getFreshVideoInfo(videoId) {
+  try {
+    return runYtDlp([`https://www.youtube.com/watch?v=${videoId}`]);
+  } catch (err) {
+    console.error(`[ytdlp] Error getting fresh info for ${videoId}:`, err.message?.slice(0, 200));
+    return null;
+  }
+}
+
+/**
+ * Search YouTube
+ */
+export async function searchYouTube(query, limit = 20) {
+  const cacheKey = `search:${query}:${limit}`;
+  const cached = cache.get(cacheKey);
+  if (cached) return cached;
+
+  try {
+    const result = runYtDlp(['--flat-playlist', `ytsearch${limit}:${query}`]);
+    const entries = result.entries || [];
+    cache.set(cacheKey, entries, 300);
+    return entries;
+  } catch (err) {
+    console.error(`[ytdlp] Search error for "${query}":`, err.message?.slice(0, 200));
+    return [];
+  }
+}
+
+/**
+ * Get trending videos
+ */
+export async function getTrending() {
+  const cacheKey = 'trending';
+  const cached = cache.get(cacheKey);
+  if (cached) return cached;
+
+  try {
+    const result = runYtDlp(['--flat-playlist', 'https://www.youtube.com/feed/trending']);
+    const entries = result.entries || [];
+    cache.set(cacheKey, entries, 600);
+    return entries;
+  } catch (err) {
+    console.error('[ytdlp] Trending error:', err.message?.slice(0, 200));
+    return [];
+  }
+}
+
+/**
+ * Get subscriptions feed (requires cookies)
+ */
+export async function getSubscriptions(cookiesStr) {
+  const cacheKey = `subs:${cookiesStr.length}`;
+  const cached = cache.get(cacheKey);
+  if (cached) return cached;
+
+  try {
+    const result = runYtDlp(['--flat-playlist', 'https://www.youtube.com/feed/subscriptions'], cookiesStr);
+    const entries = result.entries || [];
+    cache.set(cacheKey, entries, 300);
+    return entries;
+  } catch (err) {
+    console.error('[ytdlp] Subscriptions error:', err.message?.slice(0, 200));
+    return [];
+  }
+}
+
+/**
+ * Get watch history (requires cookies)
+ */
+export async function getHistory(cookiesStr) {
+  const cacheKey = `history:${cookiesStr.length}`;
+  const cached = cache.get(cacheKey);
+  if (cached) return cached;
+
+  try {
+    const result = runYtDlp(['--flat-playlist', 'https://www.youtube.com/feed/history'], cookiesStr);
+    const entries = result.entries || [];
+    cache.set(cacheKey, entries, 300);
+    return entries;
+  } catch (err) {
+    console.error('[ytdlp] History error:', err.message?.slice(0, 200));
+    return [];
+  }
+}
+
+/**
+ * Get watch later (requires cookies)
+ */
+export async function getWatchLater(cookiesStr) {
+  const cacheKey = `watchlater:${cookiesStr.length}`;
+  const cached = cache.get(cacheKey);
+  if (cached) return cached;
+
+  try {
+    const result = runYtDlp(['--flat-playlist', 'https://www.youtube.com/playlist?list=WL'], cookiesStr);
+    const entries = result.entries || [];
+    cache.set(cacheKey, entries, 300);
+    return entries;
+  } catch (err) {
+    console.error('[ytdlp] Watch later error:', err.message?.slice(0, 200));
+    return [];
+  }
+}
+
+/**
+ * Validate video ID format
+ */
+export function isValidVideoId(videoId) {
+  return /^[a-zA-Z0-9_-]{11}$/.test(videoId);
+}
