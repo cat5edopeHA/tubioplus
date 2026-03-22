@@ -808,6 +808,11 @@ router.get('/configure', (req, res) => {
 
         loadConfig();
       </script>
+
+      <div style="text-align: center; padding: 40px 20px; font-size: 13px; color: #505068; border-top: 1px solid rgba(255, 255, 255, 0.04);">
+        <a href="https://github.com/cat5edopeHA/tubiopp" style="color: #667eea; text-decoration: none;">GitHub</a>
+        <br><span style="margin-top: 8px; display: inline-block; opacity: 0.6;">vibe coded with love &hearts;</span>
+      </div>
     </body>
     </html>
   `);
