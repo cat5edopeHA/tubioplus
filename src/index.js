@@ -13,6 +13,14 @@ const PORT = process.env.PORT || 8000;
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Request logging
+app.use((req, res, next) => {
+  if (req.path !== '/health') {
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
+  }
+  next();
+});
+
 // CORS headers for all responses
 app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', '*');

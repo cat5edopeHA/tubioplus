@@ -7,8 +7,10 @@ const router = express.Router();
  * GET / - Show addon info and installation link
  */
 router.get('/', (req, res) => {
-  const addonUrl = `${req.protocol}://${req.get('host')}/configure`;
-  const stremioUrl = `stremio://install/${addonUrl}`;
+  const proto = req.get('x-forwarded-proto') || req.protocol;
+  const host = req.get('x-forwarded-host') || req.get('host');
+  const manifestUrl = `${proto}://${host}/manifest.json`;
+  const stremioUrl = `stremio://${host}/manifest.json`;
 
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.send(`
@@ -131,23 +133,6 @@ router.get('/', (req, res) => {
           background: #e0e0e0;
         }
 
-        .note {
-          margin-top: 30px;
-          padding: 15px;
-          background: #fff3cd;
-          border-left: 4px solid #ffc107;
-          border-radius: 4px;
-          text-align: left;
-          font-size: 12px;
-          color: #856404;
-          line-height: 1.5;
-        }
-
-        .note strong {
-          display: block;
-          margin-bottom: 5px;
-        }
-
         @media (max-width: 600px) {
           .container {
             padding: 30px 20px;
@@ -182,17 +167,27 @@ router.get('/', (req, res) => {
 
         <div class="buttons">
           <a href="${stremioUrl}" class="btn btn-primary">📲 Install in Stremio</a>
-          <a href="/configure" class="btn btn-secondary">⚙️ Configure</a>
+          <a href="/configure/configure" class="btn btn-secondary">⚙️ Configure</a>
         </div>
 
-        <div class="note">
-          <strong>Note for iOS/tvOS Users:</strong>
-          YouTube streams appear as unsupported in Stremio Lite. Enable "Show Unsupported Streams" in settings to see them.
-        </div>
       </div>
     </body>
     </html>
   `);
+});
+
+/**
+ * POST /api/encrypt - Encrypt a config object and return the config string
+ */
+router.post('/api/encrypt', (req, res) => {
+  try {
+    const config = req.body;
+    const configStr = encryptConfig(config);
+    res.json({ config: configStr });
+  } catch (err) {
+    console.error('[configure] Encrypt error:', err.message);
+    res.status(400).json({ error: 'Invalid config' });
+  }
 });
 
 /**
@@ -404,17 +399,6 @@ router.get('/configure', (req, res) => {
           margin-top: 5px;
         }
 
-        .warning {
-          background: #fff3cd;
-          border-left: 4px solid #ffc107;
-          padding: 12px;
-          border-radius: 4px;
-          margin-bottom: 20px;
-          font-size: 12px;
-          color: #856404;
-          line-height: 1.5;
-        }
-
         @media (max-width: 600px) {
           .container {
             padding: 20px;
@@ -433,10 +417,6 @@ router.get('/configure', (req, res) => {
     <body>
       <div class="container">
         <h1>⚙️ Configure YouTube for Stremio</h1>
-
-        <div class="warning">
-          <strong>iOS/tvOS Users:</strong> After installing, enable "Show Unsupported Streams" in Stremio settings to see YouTube videos.
-        </div>
 
         <form id="configForm">
           <div class="form-section">
@@ -529,9 +509,10 @@ router.get('/configure', (req, res) => {
         </form>
 
         <div id="configLink" class="config-link" style="display: none;">
-          <label>📋 Your Configuration Link:</label>
+          <a id="installLink" href="#" class="btn btn-primary" style="display:block;text-align:center;margin-bottom:15px;text-decoration:none;">📲 Install in Stremio</a>
+          <label>📋 Your Manifest URL:</label>
           <div class="config-value" id="configValue"></div>
-          <button type="button" class="copy-btn" onclick="copyConfig()">📋 Copy Link</button>
+          <button type="button" class="copy-btn" onclick="copyConfig()">📋 Copy URL</button>
           <div id="copySuccess" class="success" style="display: none;">✓ Copied to clipboard!</div>
         </div>
       </div>
@@ -541,26 +522,8 @@ router.get('/configure', (req, res) => {
         const sbEnabled = document.getElementById('sbEnabled');
         const sbCategories = document.getElementById('sbCategories');
 
-        // Load saved config from localStorage
         function loadConfig() {
-          const saved = localStorage.getItem('yt-stremio-config');
-          if (saved) {
-            try {
-              const config = JSON.parse(saved);
-              document.getElementById('cookies').value = config.cookies || '';
-              document.getElementById('quality').value = config.quality || '1080';
-              sbEnabled.checked = config.sponsorblock?.enabled || false;
-              dearrowEnabled.checked = config.dearrow?.enabled || false;
-
-              // Check SponsorBlock categories
-              const categories = config.sponsorblock?.categories || ['sponsor', 'selfpromo', 'interaction'];
-              document.querySelectorAll('input[name="sbCategories"]').forEach(cb => {
-                cb.checked = categories.includes(cb.value);
-              });
-            } catch (e) {
-              console.error('Error loading config:', e);
-            }
-          }
+          // Defaults are already set in the HTML
           updateSBCategoriesVisibility();
         }
 
@@ -588,14 +551,13 @@ router.get('/configure', (req, res) => {
             }
           };
 
-          // Save to localStorage
-          localStorage.setItem('yt-stremio-config', JSON.stringify(config));
-
-          // Generate encrypted config
+          // Generate encrypted config via server
           const configStr = await generateConfig(config);
-          const configLink = window.location.origin + '/' + configStr;
+          const manifestUrl = window.location.origin + '/' + configStr + '/manifest.json';
+          const stremioInstallUrl = 'stremio://' + window.location.host + '/' + configStr + '/manifest.json';
 
-          document.getElementById('configValue').textContent = configLink;
+          document.getElementById('configValue').textContent = manifestUrl;
+          document.getElementById('installLink').href = stremioInstallUrl;
           document.getElementById('configLink').style.display = 'block';
           document.getElementById('copySuccess').style.display = 'none';
         });
@@ -603,16 +565,19 @@ router.get('/configure', (req, res) => {
         function resetForm() {
           if (confirm('Reset all settings to defaults?')) {
             configForm.reset();
-            localStorage.removeItem('yt-stremio-config');
             document.getElementById('configLink').style.display = 'none';
             updateSBCategoriesVisibility();
           }
         }
 
         async function generateConfig(config) {
-          // In a real implementation, this would call the server
-          // For now, return a placeholder
-          return '${defaultConfigStr}';
+          const resp = await fetch('/configure/api/encrypt', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(config)
+          });
+          const data = await resp.json();
+          return data.config;
         }
 
         function copyConfig() {

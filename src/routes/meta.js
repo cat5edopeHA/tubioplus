@@ -50,18 +50,19 @@ router.get('/:config/meta/:type/:id.json', async (req, res) => {
     // Calculate runtime in minutes
     const runtime = info.duration ? Math.round(info.duration / 60) : 0;
 
-    // Build channel link
+    // Build channel link (category is required by Stremio Lite's Rust deserializer)
     const links = [];
     if (info.channel_url) {
       links.push({
         name: info.uploader || 'Channel',
+        category: 'director',
         url: info.channel_url
       });
     }
 
     const meta = {
       id: `yt:${videoId}`,
-      type: 'channel',
+      type: 'YouTube',
       name: title,
       poster: poster || 'https://via.placeholder.com/320x180',
       posterShape: 'landscape',

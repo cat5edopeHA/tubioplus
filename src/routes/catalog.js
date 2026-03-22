@@ -54,7 +54,7 @@ async function entryToMeta(entry, config) {
 
   return {
     id: `yt:${videoId}`,
-    type: 'channel',
+    type: 'YouTube',
     name: title,
     poster: poster || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
     posterShape: 'landscape'
@@ -73,8 +73,8 @@ router.get('/:config/catalog/:type/:id/:extra?.json', async (req, res) => {
 
     let entries = [];
 
-    if (id === 'yt:trending') {
-      entries = await ytdlp.getTrending();
+    if (id === 'yt:recommendations') {
+      entries = await ytdlp.getRecommendations(config.cookies);
     } else if (id === 'yt:search') {
       const query = extra.search;
       if (!query) return res.json({ metas: [] });
