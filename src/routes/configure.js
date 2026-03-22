@@ -310,6 +310,7 @@ router.get('/', (req, res) => {
       <div class="footer">
         Inspired by <a href="https://github.com/xXCrash2BomberXx/YouTubio">YouTubio</a> &middot;
         <a href="https://github.com/cat5edopeHA/tubiopp">GitHub</a>
+        <br><span style="margin-top: 8px; display: inline-block; opacity: 0.6;">vibe coded with love &hearts;</span>
       </div>
     </body>
     </html>
