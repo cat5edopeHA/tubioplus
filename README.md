@@ -7,7 +7,7 @@ Inspired by [YouTubio](https://github.com/xXCrash2BomberXx/YouTubio). Vibe coded
 ## Features
 
 - Search YouTube, browse recommendations, subscriptions, history, and watch later
-- Quality up to 1080p (h264 for iOS compatibility)
+- Quality up to 4K (VP9/AV1) or 1080p h264 for iOS compatibility
 - SponsorBlock integration (skip sponsors, intros, outros, etc.)
 - DeArrow support (community titles & thumbnails)
 - Cookie-based authentication for personalized feeds
@@ -45,11 +45,13 @@ npm start
 | Branch | Purpose | Key Differences |
 |--------|---------|------------------|
 | `main` | Stable release | Rate limiting ON by default, catalogs return 20 videos (no pagination) |
-| `testing` | Experimental features | Rate limiting OFF by default, catalog pagination (loads 20 initially, then 10 more per scroll, up to 100), increased yt-dlp timeout |
+| `testing` | Experimental features | Rate limiting OFF by default, catalog pagination (loads 20 initially, then 10 more per scroll, up to 100), increased yt-dlp timeout, 4K playback (VP9/AV1), subfolder/base path support (`BASE_PATH` env var) |
 
 Set `RATE_LIMIT=on` or `RATE_LIMIT=off` via environment variable to override the default for either branch.
 
 Set `CATALOG_LIMIT` to control the maximum number of videos fetched per catalog (default: 100 on testing, 20 on main).
+
+Set `BASE_PATH` to mount the addon under a subfolder (e.g., `BASE_PATH=/tubio` serves at `https://myserver.com/tubio`). Testing branch only.
 
 ## Privacy
 

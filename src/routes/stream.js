@@ -5,6 +5,7 @@ import * as ytdlp from '../services/ytdlp.js';
 const router = express.Router();
 
 const QUALITIES = [
+  { height: 2160, label: '4K' },
   { height: 1080, label: '1080p' },
   { height: 720, label: '720p' },
   { height: 480, label: '480p' },
@@ -37,7 +38,10 @@ router.get('/:config/stream/:type/:id.json', async (req, res) => {
     const proto = req.get('x-forwarded-proto') || req.protocol || 'https';
     const host = req.get('x-forwarded-host') || req.get('host') || 'localhost:8000';
 
-    // Check which DASH video heights are available (h264 preferred)
+    // BASE_PATH prefix for play URLs
+    const basePath = req.baseUrl || '';
+
+    // Check which DASH video heights are available
     const videoFmts = (info.formats || []).filter(f =>
       f.vcodec && f.vcodec !== 'none' && f.acodec === 'none' && f.url && !f.format_id?.startsWith('sb')
     );
@@ -54,12 +58,27 @@ router.get('/:config/stream/:type/:id.json', async (req, res) => {
       if (q.height > maxHeight) continue;
       if (!availableHeights.has(q.height) && q.height !== 360) continue;
 
-      // Find matching video format for description
-      const vfmt = videoFmts.find(f => f.height === q.height && (f.vcodec?.startsWith('avc1') || f.vcodec?.includes('h264')));
-      const codec = vfmt ? vfmt.vcodec.split('.')[0] : (q.height <= 360 ? 'h264' : 'h264');
+      // Find matching video format for description — prefer h264 for <=1080p, any codec for 4K
+      let vfmt;
+      if (q.height > 1080) {
+        // 4K: YouTube doesn't serve h264 above 1080p, look for VP9/AV1
+        vfmt = videoFmts.find(f => f.height === q.height);
+      } else {
+        vfmt = videoFmts.find(f => f.height === q.height && (f.vcodec?.startsWith('avc1') || f.vcodec?.includes('h264')));
+        if (!vfmt) vfmt = videoFmts.find(f => f.height === q.height);
+      }
+
+      let codec = 'h264';
+      if (vfmt) {
+        const vc = vfmt.vcodec || '';
+        if (vc.startsWith('vp9') || vc.startsWith('vp09')) codec = 'VP9';
+        else if (vc.startsWith('av01')) codec = 'AV1';
+        else if (vc.startsWith('avc1') || vc.includes('h264')) codec = 'h264';
+        else codec = vc.split('.')[0];
+      }
 
       streams.push({
-        url: `${proto}://${host}/play/${videoId}.mp4?q=${q.height}`,
+        url: `${proto}://${host}${basePath}/play/${videoId}.mp4?q=${q.height}`,
         name: `${q.label}`,
         description: `${codec} + AAC | yt-stremio`,
         behaviorHints: {
@@ -73,7 +92,7 @@ router.get('/:config/stream/:type/:id.json', async (req, res) => {
     // Ensure at least 360p fallback
     if (streams.length === 0) {
       streams.push({
-        url: `${proto}://${host}/play/${videoId}.mp4?q=360`,
+        url: `${proto}://${host}${basePath}/play/${videoId}.mp4?q=360`,
         name: '360p',
         description: 'h264 + AAC | yt-stremio',
         behaviorHints: {

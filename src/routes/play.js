@@ -6,21 +6,29 @@ import * as ytdlp from '../services/ytdlp.js';
 const router = express.Router();
 
 /**
- * Find best h264 video format at or below requested height
+ * Find best video format at or below requested height.
+ * For <=1080p: prefers h264/avc1 (iOS compatibility).
+ * For >1080p (4K): accepts VP9/AV1 since YouTube doesn't serve h264 above 1080p.
  */
 function findVideoFormat(formats, requestedHeight) {
   const videoOnly = formats
     .filter(f => f.vcodec && f.vcodec !== 'none' && f.acodec === 'none' && f.url && !f.format_id?.startsWith('sb'))
-    .sort((a, b) => (a.height || 0) - (b.height || 0));
+    .sort((a, b) => (b.height || 0) - (a.height || 0)); // sort descending
 
-  // Prefer h264/avc1 at <= requested height
+  if (requestedHeight > 1080) {
+    // 4K: accept any codec (VP9, AV1, h264) — prefer highest quality at or below requested height
+    let pick = videoOnly.find(f => (f.height || 0) <= requestedHeight);
+    if (!pick) pick = videoOnly[videoOnly.length - 1]; // fallback to lowest
+    return pick;
+  }
+
+  // <=1080p: prefer h264/avc1 for iOS compatibility
   const h264 = videoOnly.filter(f => f.vcodec?.startsWith('avc1') || f.vcodec?.includes('h264'));
-  let pick = h264.reverse().find(f => (f.height || 0) <= requestedHeight);
-  if (!pick) pick = h264[0]; // fallback to lowest h264
+  let pick = h264.find(f => (f.height || 0) <= requestedHeight);
+  if (!pick) pick = h264[h264.length - 1]; // fallback to lowest h264
   if (!pick) {
     // No h264 at all, try any codec
-    const all = videoOnly.slice().reverse();
-    pick = all.find(f => (f.height || 0) <= requestedHeight) || all[0];
+    pick = videoOnly.find(f => (f.height || 0) <= requestedHeight) || videoOnly[videoOnly.length - 1];
   }
   return pick;
 }

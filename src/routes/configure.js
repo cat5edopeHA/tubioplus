@@ -9,6 +9,7 @@ const router = express.Router();
 router.get('/', (req, res) => {
   const proto = req.get('x-forwarded-proto') || req.protocol;
   const host = req.get('x-forwarded-host') || req.get('host');
+  const basePath = req.baseUrl || '';
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.send(`
     <!DOCTYPE html>
@@ -260,14 +261,14 @@ router.get('/', (req, res) => {
         <h1>Tubio+</h1>
         <p class="tagline">Stream YouTube directly in Stremio.<br>Built for iOS, tvOS, and web.</p>
         <div class="actions">
-          <a href="/configure" class="btn btn-primary">Get Started</a>
+          <a href="${basePath}/configure" class="btn btn-primary">Get Started</a>
         </div>
       </div>
 
       <div class="section">
         <div class="about">
-          A self-hosted Stremio addon that streams YouTube content up to <strong>1080p h264</strong>,
-          muxed on-the-fly with FFmpeg for full iOS and tvOS compatibility.
+          A self-hosted Stremio addon that streams YouTube content up to <strong>4K</strong> (VP9/AV1)
+          or <strong>1080p h264</strong> for iOS compatibility, muxed on-the-fly with FFmpeg.
           Search, browse recommendations, access your subscriptions, watch history, and watch later
           with cookie authentication. Includes <strong>SponsorBlock</strong> to skip sponsors and filler,
           and <strong>DeArrow</strong> for community-sourced titles and thumbnails.
@@ -335,6 +336,7 @@ router.post('/api/encrypt', (req, res) => {
  * GET /configure - Configuration form
  */
 router.get('/configure', (req, res) => {
+  const basePath = req.baseUrl || '';
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.send(`
     <!DOCTYPE html>
@@ -632,7 +634,7 @@ router.get('/configure', (req, res) => {
     </head>
     <body>
       <div class="container">
-        <a href="/" class="back-link">← Back</a>
+        <a href="${basePath}/" class="back-link">← Back</a>
         <h1>Configure Tubio+</h1>
 
         <form id="configForm">
@@ -655,8 +657,9 @@ router.get('/configure', (req, res) => {
                 <option value="480">480p</option>
                 <option value="720">720p</option>
                 <option value="1080" selected>1080p (default)</option>
+                <option value="2160">4K (2160p)</option>
               </select>
-              <div class="form-help">Videos will stream at this quality or lower depending on availability</div>
+              <div class="form-help">Videos will stream at this quality or lower depending on availability. 4K uses VP9/AV1 codecs (not supported on all devices).</div>
             </div>
           </div>
 
@@ -769,8 +772,9 @@ router.get('/configure', (req, res) => {
           };
 
           const configStr = await generateConfig(config);
-          const manifestUrl = window.location.origin + '/' + configStr + '/manifest.json';
-          const stremioInstallUrl = 'stremio://' + window.location.host + '/' + configStr + '/manifest.json';
+          const base = '${basePath}';
+          const manifestUrl = window.location.origin + base + '/' + configStr + '/manifest.json';
+          const stremioInstallUrl = 'stremio://' + window.location.host + base + '/' + configStr + '/manifest.json';
 
           document.getElementById('configValue').textContent = manifestUrl;
           document.getElementById('installLink').href = stremioInstallUrl;
@@ -787,7 +791,7 @@ router.get('/configure', (req, res) => {
         }
 
         async function generateConfig(config) {
-          const resp = await fetch('/api/encrypt', {
+          const resp = await fetch('${basePath}/api/encrypt', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(config)
@@ -823,7 +827,7 @@ router.get('/configure', (req, res) => {
  * Redirect to /configure so the form loads correctly
  */
 router.get('/:config/configure', (req, res) => {
-  res.redirect('/configure');
+  res.redirect(`${req.baseUrl}/configure`);
 });
 
 export default router;
