@@ -3,3 +3,4 @@ node_modules/
 .encryption-key
 *.log
 /tmp/
+CLAUDE.md
