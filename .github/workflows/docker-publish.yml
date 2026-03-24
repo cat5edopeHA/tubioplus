@@ -1,5 +1,4 @@
 name: Build and publish Docker image
-# trigger test build
 
 on:
   push:
