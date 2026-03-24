@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - testing
       - nightly
 
 jobs:
@@ -37,6 +38,8 @@ jobs:
             # main branch → :latest + :main
             type=raw,value=latest,enable=${{ github.ref_name == 'main' }}
             type=raw,value=main,enable=${{ github.ref_name == 'main' }}
+            # testing branch → :testing
+            type=raw,value=testing,enable=${{ github.ref_name == 'testing' }}
             # nightly branch → :nightly
             type=raw,value=nightly,enable=${{ github.ref_name == 'nightly' }}
 
