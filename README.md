@@ -17,18 +17,26 @@ Inspired by [YouTubio](https://github.com/xXCrash2BomberXx/YouTubio). Vibe coded
 
 ## Deploy with Docker
 
+Pull the pre-built image from Docker Hub:
+
 ```bash
-docker run -d --name tubioplus -p 8800:8000 --restart unless-stopped tubioplus
+docker run -d --name tubio -p 8800:8000 --restart unless-stopped cat5edopeha/tubioplus:latest
 ```
 
-Or build locally:
+Or with docker compose (pulls automatically):
 
 ```bash
-docker build -t tubioplus .
-docker run -d --name tubioplus -p 8800:8000 --restart unless-stopped tubioplus
+docker compose up -d
 ```
 
 Then open `http://your-host:8800/configure` to set up cookies and install in Stremio.
+
+### Build locally
+
+```bash
+docker build -t tubioplus .
+docker run -d --name tubio -p 8800:8000 --restart unless-stopped tubioplus
+```
 
 ## Run with Node.js
 

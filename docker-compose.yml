@@ -1,9 +1,10 @@
 version: '3.8'
 
 services:
-  yt-stremio:
-    build: .
-    container_name: yt-stremio
+  tubio:
+    image: cat5edopeha/tubioplus:latest
+    build: .          # omit this line (or run `docker compose build`) to build locally
+    container_name: tubio
     ports:
       - "8000:8000"
     environment:
