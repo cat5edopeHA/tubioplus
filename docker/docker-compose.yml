@@ -1,0 +1,21 @@
+version: '3.8'
+services:
+  tubioplus:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    ports:
+      - "8000:8000"
+      - "6080:6080"
+    volumes:
+      - tubio-data:/data
+    shm_size: '256mb'
+    environment:
+      - PORT=8000
+      - RATE_LIMIT=on
+      - CATALOG_LIMIT=100
+      - BROWSER_COOKIES=auto
+    restart: unless-stopped
+
+volumes:
+  tubio-data:
