@@ -6,6 +6,7 @@ import { StepFeatures } from '../components/StepFeatures';
 import { StepInstall } from '../components/StepInstall';
 
 const basePath = (window as any).__BASE_PATH__ ?? '';
+const noVncUrl = (window as any).__NOVNC_URL__ || undefined;
 
 export function Configure() {
   const [step, setStep] = useState(0);
@@ -45,7 +46,7 @@ export function Configure() {
   };
 
   const steps = [
-    { label: 'Auth', content: <StepAuth cookies={cookies} onCookiesChange={setCookies} /> },
+    { label: 'Auth', content: <StepAuth cookies={cookies} onCookiesChange={setCookies} noVncUrl={noVncUrl} /> },
     { label: 'Quality', content: <StepQuality quality={quality} onQualityChange={setQuality} /> },
     { label: 'Features', content: <StepFeatures sponsorblockEnabled={sbEnabled} onSponsorblockToggle={setSbEnabled} sponsorblockCategories={sbCategories} onCategoriesChange={setSbCategories} dearrowEnabled={daEnabled} onDearrowToggle={setDaEnabled} /> },
     { label: 'Install', content: <StepInstall addonUrl={addonUrl} loading={loading} /> },
