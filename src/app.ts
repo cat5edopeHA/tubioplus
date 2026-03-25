@@ -1,5 +1,9 @@
 import Fastify from 'fastify';
+import fastifyStatic from '@fastify/static';
 import { existsSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
+import { join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { spawn, type ChildProcess } from 'node:child_process';
 import type { EnvConfig } from './shared/env.js';
 import { createLogger } from './infrastructure/logger.js';
@@ -374,6 +378,39 @@ export async function buildApp(env: EnvConfig) {
       }
     },
   );
+
+  // Serve React SPA static files
+  const currentDir = typeof import.meta.dirname === 'string'
+    ? import.meta.dirname
+    : resolve(fileURLToPath(import.meta.url), '..');
+  const frontendDir = resolve(currentDir, '../frontend');
+  if (existsSync(frontendDir)) {
+    await app.register(fastifyStatic, {
+      root: frontendDir,
+      prefix: `${env.basePath}/`,
+      decorateReply: false,
+    });
+
+    // SPA catch-all: serve index.html with BASE_PATH injected
+    const indexPath = join(frontendDir, 'index.html');
+    let indexHtml: string | null = null;
+
+    const serveIndex = async (_request: any, reply: any) => {
+      if (!indexHtml && existsSync(indexPath)) {
+        const raw = await readFile(indexPath, 'utf-8');
+        // Inject BASE_PATH before closing </head>
+        indexHtml = raw.replace('</head>', `<script>window.__BASE_PATH__="${env.basePath}";</script></head>`);
+      }
+      if (indexHtml) {
+        reply.type('text/html').send(indexHtml);
+      } else {
+        reply.status(404).send('Frontend not built');
+      }
+    };
+
+    app.get(`${env.basePath}/`, serveIndex);
+    app.get(`${env.basePath}/configure`, serveIndex);
+  }
 
   return app;
 }
