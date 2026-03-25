@@ -21,7 +21,7 @@ export function paginateResults<T>(items: T[], skip: number, catalogLimit: numbe
   const pageSize = skip === 0 ? 20 : 10;
   const remaining = catalogLimit - skip;
   const count = Math.min(pageSize, remaining);
-  return items.slice(0, count);
+  return items.slice(skip, skip + count);
 }
 
 export function buildCatalogMetas(results: SearchResult[], brandings?: Map<string, DeArrowBranding>): StremioMetaPreview[] {
