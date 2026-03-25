@@ -5,7 +5,8 @@
   "type": "module",
   "main": "dist/server.js",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && npm run build:frontend",
+    "build:frontend": "cd frontend && npm run build",
     "start": "node dist/server.js",
     "dev": "tsx watch src/server.ts",
     "test": "vitest run",
