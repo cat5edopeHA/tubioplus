@@ -111,8 +111,8 @@ export async function buildApp(env: EnvConfig) {
     });
   }
 
-  // Health check with caching
-  app.get(`${env.basePath}/health`, async () => {
+  // Health check with caching (always at root, not behind basePath)
+  app.get('/health', async () => {
     const now = Date.now();
     if (healthCache && now - healthCache.cachedAt < HEALTH_CACHE_TTL) {
       return { status: 'ok', ytdlp: healthCache.ytdlp, ffmpeg: healthCache.ffmpeg };
