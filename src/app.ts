@@ -188,8 +188,8 @@ export async function buildApp(env: EnvConfig) {
 
   app.get<{ Params: { config: string; type: string; id: string } }>(
     `${stremioPrefix}/:config([A-Za-z0-9_\\-]{32,})/catalog/:type/:id.json`,
-    async (request) => {
-      if (!applyRateLimit(apiLimiter, request, {} as any)) return { metas: [] };
+    async (request, reply) => {
+      if (!applyRateLimit(apiLimiter, request, reply)) return { metas: [] };
       const config = decryptRequestConfig(request.params.config);
       const cookies = await resolveCookies(config);
       try {
@@ -202,8 +202,8 @@ export async function buildApp(env: EnvConfig) {
 
   app.get<{ Params: { config: string; type: string; id: string; extra: string } }>(
     `${stremioPrefix}/:config([A-Za-z0-9_\\-]{32,})/catalog/:type/:id/:extra.json`,
-    async (request) => {
-      if (!applyRateLimit(apiLimiter, request, {} as any)) return { metas: [] };
+    async (request, reply) => {
+      if (!applyRateLimit(apiLimiter, request, reply)) return { metas: [] };
       const config = decryptRequestConfig(request.params.config);
       const cookies = await resolveCookies(config);
       try {
@@ -240,6 +240,17 @@ export async function buildApp(env: EnvConfig) {
       }
       // yt:subscriptions, yt:history, yt:watchlater require cookies
       // Return empty if no cookies available (graceful degradation)
+      if (catalogId === 'yt:subscriptions' || catalogId === 'yt:history' || catalogId === 'yt:watchlater') {
+        if (!cookies.cookieFile && !cookies.browserCookies) {
+          return { metas: [] };
+        }
+        const urlMap: Record<string, string> = {
+          'yt:subscriptions': 'https://www.youtube.com/feed/subscriptions',
+          'yt:history': 'https://www.youtube.com/feed/history',
+          'yt:watchlater': 'https://www.youtube.com/playlist?list=WL',
+        };
+        results = await ytdlp.getPlaylist(urlMap[catalogId], env.catalogLimit, cookies.cookieFile, cookies.browserCookies);
+      }
 
       const paginated = paginateResults(results, skip, env.catalogLimit);
       const metas = buildCatalogMetas(paginated);
@@ -257,8 +268,8 @@ export async function buildApp(env: EnvConfig) {
   // Stremio meta route
   app.get<{ Params: { config: string; type: string; id: string } }>(
     `${stremioPrefix}/:config([A-Za-z0-9_\\-]{32,})/meta/:type/:id.json`,
-    async (request) => {
-      if (!applyRateLimit(apiLimiter, request, {} as any)) return { meta: {} };
+    async (request, reply) => {
+      if (!applyRateLimit(apiLimiter, request, reply)) return { meta: {} };
       const config = decryptRequestConfig(request.params.config);
       const videoId = extractVideoId(request.params.id);
       if (!isValidVideoId(request.params.id)) return { meta: {} };
@@ -279,8 +290,8 @@ export async function buildApp(env: EnvConfig) {
   // Stremio stream route
   app.get<{ Params: { config: string; type: string; id: string } }>(
     `${stremioPrefix}/:config([A-Za-z0-9_\\-]{32,})/stream/:type/:id.json`,
-    async (request) => {
-      if (!applyRateLimit(apiLimiter, request, {} as any)) return { streams: [] };
+    async (request, reply) => {
+      if (!applyRateLimit(apiLimiter, request, reply)) return { streams: [] };
       const config = decryptRequestConfig(request.params.config);
       const videoId = extractVideoId(request.params.id);
       if (!isValidVideoId(request.params.id)) return { streams: [] };
@@ -308,8 +319,8 @@ export async function buildApp(env: EnvConfig) {
   // Stremio subtitles route
   app.get<{ Params: { config: string; type: string; id: string } }>(
     `${stremioPrefix}/:config([A-Za-z0-9_\\-]{32,})/subtitles/:type/:id.json`,
-    async (request) => {
-      if (!applyRateLimit(apiLimiter, request, {} as any)) return { subtitles: [] };
+    async (request, reply) => {
+      if (!applyRateLimit(apiLimiter, request, reply)) return { subtitles: [] };
       const config = decryptRequestConfig(request.params.config);
       const videoId = extractVideoId(request.params.id);
       if (!isValidVideoId(request.params.id)) return { subtitles: [] };
@@ -402,7 +413,7 @@ export async function buildApp(env: EnvConfig) {
   const currentDir = typeof import.meta.dirname === 'string'
     ? import.meta.dirname
     : resolve(fileURLToPath(import.meta.url), '..');
-  const frontendDir = resolve(currentDir, '../frontend');
+  const frontendDir = resolve(currentDir, 'frontend');
   if (existsSync(frontendDir)) {
     await app.register(fastifyStatic, {
       root: frontendDir,

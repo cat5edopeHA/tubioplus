@@ -27,6 +27,19 @@ describe('buildYtDlpArgs', () => {
     expect(args).toContain('--flat-playlist');
     expect(args.some((a) => a.includes('ytsearch20:test query'))).toBe(true);
   });
+  it('builds playlist args correctly', () => {
+    const args = buildYtDlpArgs('', { type: 'playlist', url: 'https://www.youtube.com/feed/subscriptions' });
+    expect(args).toContain('--flat-playlist');
+    expect(args).not.toContain('--no-playlist');
+    expect(args[args.length - 1]).toBe('https://www.youtube.com/feed/subscriptions');
+  });
+  it('builds playlist args with cookies', () => {
+    const args = buildYtDlpArgs('', { type: 'playlist', url: 'https://www.youtube.com/playlist?list=WL', cookieFile: '/tmp/c.txt' });
+    expect(args).toContain('--cookies');
+    expect(args).toContain('/tmp/c.txt');
+    expect(args).toContain('--flat-playlist');
+    expect(args[args.length - 1]).toBe('https://www.youtube.com/playlist?list=WL');
+  });
 });
 
 describe('parseVideoInfo', () => {

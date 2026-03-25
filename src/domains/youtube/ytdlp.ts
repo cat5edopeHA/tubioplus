@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { Cache } from '../../infrastructure/cache.js';
+import { ExtractionError } from '../../infrastructure/errors.js';
 import type { VideoInfo, SearchResult } from './types.js';
 
 export interface YtDlpInfoOptions {
@@ -58,11 +59,13 @@ export function parseVideoInfo(output: string): VideoInfo {
 export class YtDlpService {
   private readonly ytDlpPath: string;
   private readonly cache: Cache<VideoInfo>;
+  private readonly searchCache: Cache<SearchResult[]>;
   private readonly timeoutMs: number;
 
   constructor(ytDlpPath: string, cache: Cache<VideoInfo>, timeoutMs = 30000) {
     this.ytDlpPath = ytDlpPath;
     this.cache = cache;
+    this.searchCache = new Cache<SearchResult[]>();
     this.timeoutMs = timeoutMs;
   }
 
@@ -94,10 +97,30 @@ export class YtDlpService {
   }
 
   async search(query: string, limit: number, cookieFile?: string, browserCookies?: boolean): Promise<SearchResult[]> {
+    const cacheKey = `search:${query}`;
+    const cached = this.searchCache.get(cacheKey);
+    if (cached) return cached;
+
     const args = buildYtDlpArgs('', { type: 'search', query, limit, cookieFile, browserCookies });
     const output = await this.run(args);
     const data = JSON.parse(output);
-    return (data.entries ?? []) as SearchResult[];
+    const results = (data.entries ?? []) as SearchResult[];
+    this.searchCache.set(cacheKey, results, 300); // 5 minute TTL
+    return results;
+  }
+
+  async getPlaylist(url: string, limit: number, cookieFile?: string, browserCookies?: boolean): Promise<SearchResult[]> {
+    const cacheKey = `playlist:${url}`;
+    const cached = this.searchCache.get(cacheKey);
+    if (cached) return cached;
+
+    const args = buildYtDlpArgs('', { type: 'playlist', url, cookieFile, browserCookies });
+    args.push('--playlist-end', String(limit));
+    const output = await this.run(args);
+    const data = JSON.parse(output);
+    const results = (data.entries ?? []) as SearchResult[];
+    this.searchCache.set(cacheKey, results, 300); // 5 minute TTL
+    return results;
   }
 
   async writeCookieFile(cookies: string): Promise<string> {
@@ -115,11 +138,11 @@ export class YtDlpService {
       const proc = spawn(this.ytDlpPath, args, { stdio: ['ignore', 'pipe', 'pipe'] });
       let stdout = '';
       let stderr = '';
-      const timer = setTimeout(() => { proc.kill('SIGTERM'); reject(new Error(`yt-dlp timed out after ${this.timeoutMs}ms`)); }, this.timeoutMs);
+      const timer = setTimeout(() => { proc.kill('SIGTERM'); reject(new ExtractionError(`yt-dlp timed out after ${this.timeoutMs}ms`)); }, this.timeoutMs);
       proc.stdout.on('data', (chunk: Buffer) => { stdout += chunk.toString(); });
       proc.stderr.on('data', (chunk: Buffer) => { stderr += chunk.toString(); });
-      proc.on('close', (code) => { clearTimeout(timer); if (code === 0) resolve(stdout); else reject(new Error(`yt-dlp exited with code ${code}: ${stderr}`)); });
-      proc.on('error', (err) => { clearTimeout(timer); reject(err); });
+      proc.on('close', (code) => { clearTimeout(timer); if (code === 0) resolve(stdout); else reject(new ExtractionError(`yt-dlp exited with code ${code}: ${stderr}`)); });
+      proc.on('error', (err) => { clearTimeout(timer); reject(new ExtractionError(err.message)); });
     });
   }
 }
