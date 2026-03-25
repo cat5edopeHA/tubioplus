@@ -10,7 +10,8 @@
     "start": "node dist/server.js",
     "dev": "tsx watch src/server.ts",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:e2e": "npx playwright test --config test/e2e/playwright.config.ts"
   },
   "engines": {
     "node": ">=20.0.0"
