@@ -27,8 +27,8 @@ Single Node.js process with domain-driven modules. Each domain is a Fastify plug
 
 ```
 src/
-├── app.ts                          # Fastify app factory
-├── server.ts                       # Entry point, startup, graceful shutdown
+├── app.ts                          # Fastify app factory (creates and configures the instance)
+├── server.ts                       # Entry point: startup banner, local IP detection, signal handlers, graceful shutdown (see Graceful Shutdown section)
 ├── domains/
 │   ├── stremio/                    # Stremio protocol types and manifest
 │   │   ├── manifest.ts             # Manifest definition and route
@@ -44,13 +44,18 @@ src/
 │   │   ├── plugin.ts               # Registers /:config/catalog routes
 │   │   └── prewarm.ts              # Fire-and-forget video info prefetching
 │   ├── meta/                       # Video metadata
-│   │   ├── handler.ts              # Meta assembly (title, poster, runtime, links)
+│   │   ├── handler.ts              # Meta assembly: title, poster (posterShape: "landscape"),
+│   │   │                           # description, releaseInfo (year), runtime ("Xm"),
+│   │   │                           # channel as links entry ({name, category:"channel", url}),
+│   │   │                           # behaviorHints.defaultVideoId. DeArrow enrichment if enabled.
 │   │   └── plugin.ts               # Registers /:config/meta routes
 │   ├── stream/                     # Stream quality options
 │   │   ├── handler.ts              # Available qualities for a video
 │   │   └── plugin.ts               # Registers /:config/stream routes
 │   ├── subtitles/                  # Subtitle extraction
-│   │   ├── handler.ts              # Track discovery, format preference, manual vs auto
+│   │   ├── handler.ts              # Track discovery: manual subs priority over auto-generated.
+│   │   │                           # Format preference: SRT > VTT > first available.
+│   │   │                           # Auto-generated captions prefixed with "Auto".
 │   │   └── plugin.ts               # Registers /:config/subtitles routes
 │   ├── config/                     # Configuration and encryption
 │   │   ├── encryption.ts           # AES-256-CBC encrypt/decrypt
@@ -91,11 +96,11 @@ Request → Rate Limiter (onRequest) → Config Decrypt (preHandler) → Domain 
 ```
 
 1. Rate limiter checks IP against sliding window, returns 429 if exceeded
-2. Config decryption extracts `:config` param, decrypts AES-256-CBC, merges with defaults, attaches to request
+2. Config decryption extracts `:config` param, decrypts AES-256-CBC, merges with defaults, attaches to request. If decryption fails (bad key, corrupted data), return empty results for Stremio routes (not a 500 — Stremio handles empty gracefully). Routes without a `:config` param (manifest, health, landing) skip this hook.
 3. Domain handler processes the request (catalog, meta, stream, or subtitles)
-4. YouTube service spawns yt-dlp, parses output, caches result
+4. YouTube service spawns yt-dlp with `--referer https://www.youtube.com` flag, parses JSON output, caches result
 5. Optional enrichment: DeArrow titles/thumbnails if enabled
-6. Pre-warming: fire-and-forget cache fill for returned video IDs
+6. Pre-warming: fire-and-forget cache fill for the first 10 video IDs from the response. No concurrency limit (each is a single yt-dlp spawn). Failures are silently ignored — pre-warming is best-effort.
 7. Response formatted as Stremio protocol JSON with cache headers
 
 ### Play Endpoint (Video Streaming)
@@ -105,17 +110,20 @@ Request → Rate Limiter → Validate Video ID → Fresh Format Extraction → C
 ```
 
 1. Rate limiter (play-specific: 15/min per IP)
-2. Video ID validation: regex check (11 chars, alphanumeric + `-_`)
-3. Fresh yt-dlp extraction (URLs expire ~6 hours, always fetch new)
+2. Video ID validation: regex check (11 chars, `[a-zA-Z0-9_-]`)
+3. Fresh yt-dlp extraction with `--referer https://www.youtube.com` (URLs expire ~6 hours, always fetch new). yt-dlp timeout: 30 seconds.
 4. Codec selection: best video format at/below requested height
    - ≤1080p: prefer h264 (iOS compatibility)
    - 4K: accept VP9/AV1
 5. Audio selection: best AAC track
 6. Streaming:
    - 360p: direct HTTP proxy to YouTube's muxed stream (no FFmpeg)
-   - 480p+: spawn FFmpeg to mux DASH video + audio → fragmented MP4 → pipe to response
-7. FFmpeg flags: `-movflags frag_keyframe+empty_moov+faststart -f mp4 pipe:1`
-8. FFmpeg killed on client disconnect (response `close` event)
+   - 720p+: spawn FFmpeg to mux DASH video + audio → fragmented MP4 → pipe to response
+   - 480p: FFmpeg mux (same as 720p+ — YouTube serves 480p as separate DASH streams)
+7. FFmpeg args include `--referer https://www.youtube.com` on input URLs
+8. FFmpeg flags: `-movflags frag_keyframe+empty_moov+faststart -f mp4 pipe:1`
+9. FFmpeg killed on client disconnect (response `close` event)
+10. No concurrent stream cap — rate limiting provides backpressure. Monitor memory in production.
 
 ### Config Encryption Flow
 
@@ -173,9 +181,17 @@ Four-step guided flow with progress indicator:
 
 ### noVNC Login Button
 
-- Constructs URL from the incoming request hostname + port 6080: `http://{request_host}:6080/vnc.html`
-- `NOVNC_URL` env var overrides this for reverse proxy setups
-- Opens in new tab
+- Always points to the **server's local/LAN IP**, not the request hostname. This is because the VNC port (6080) is typically not exposed through a reverse proxy — users need to hit the Docker host directly.
+- At startup, the server detects its local IP (first non-loopback IPv4 address) and stores it. The config page serves this as `http://{local_ip}:6080/vnc.html`.
+- `NOVNC_URL` env var overrides this entirely if set (for custom setups).
+- Opens in new tab.
+
+### SPA Routing and BASE_PATH
+
+- The React SPA uses client-side routing (React Router) with two routes: `/` (landing) and `/configure` (stepper wizard).
+- Fastify serves `index.html` for both `/` and `/configure`, with static assets (JS/CSS) from the Vite build output.
+- To avoid collision with the `/:config/` Stremio route pattern, the Stremio config param route is registered with a regex constraint that only matches base64url strings (alphanumeric, `-`, `_`, minimum 32 chars). `/configure` will never match this pattern.
+- When `BASE_PATH` is set, Fastify mounts all routes under the prefix. The React SPA receives the `BASE_PATH` value via a `<script>` tag injected into `index.html` at serve time (e.g., `window.__BASE_PATH__ = "/tubio"`). The SPA uses this for API calls and the `stremio://` install link.
 
 ---
 
@@ -194,7 +210,16 @@ In-memory TTL cache with automatic expiration on access. No external dependencie
 
 Play endpoint always fetches fresh format info (ignores cache) because YouTube stream URLs expire ~6 hours and cached URLs may be stale.
 
-Pre-warming: after catalog responses, fire-and-forget calls to cache video info for returned IDs.
+**Stale-on-error behavior:** The cache retains expired entries for an additional grace period (2x the original TTL). If a fresh fetch fails (yt-dlp error, timeout), the cache returns the stale entry and logs a warning. If no stale entry exists, the error propagates normally. This prevents transient YouTube failures from breaking the user experience.
+
+**Pre-warming:** After catalog responses, fire-and-forget calls to cache video info for the first 10 returned video IDs. Each pre-warm is an independent yt-dlp spawn. Failures are silently ignored. Pre-warming does not count against rate limits (it's server-to-YouTube, not user-to-server).
+
+### Catalog Pagination
+
+- First page: 20 items
+- Subsequent pages (skip > 0): 10 items per page
+- Hard limit: `CATALOG_LIMIT` env var (default 100) — stop returning results after this many total items
+- Stremio sends `skip` as a multiple of its page size. The addon interprets `skip=0` as first page (20 items) and `skip>0` as continuation (10 items).
 
 ---
 
@@ -224,15 +249,23 @@ Sliding-window counter per IP. No external dependencies.
 - `EncryptionError` — config decrypt failure (bad key, corrupted data)
 - `RateLimitError` — request exceeded limit
 - `ExternalServiceError` — SponsorBlock/DeArrow API failure
+- `DependencyError` — yt-dlp or FFmpeg binary not found or not executable
 
 ### Response Strategy
 
 - **Stremio routes:** return empty arrays on failure (`{ metas: [] }`, `{ streams: [] }`). Stremio handles missing data gracefully; 500 errors break the client.
-- **`/play` endpoint:** return proper HTTP errors (404 for bad video ID, 500 for extraction failure) since this is a direct video stream.
+- **`/play` endpoint:** return proper HTTP errors (404 for bad video ID, 500 for extraction failure, 503 if yt-dlp/FFmpeg unavailable) since this is a direct video stream.
 - **`/api/encrypt`:** return 400 with message for bad input.
 - **SponsorBlock/DeArrow failures:** silent degradation. Features stop enriching but never block playback.
 - **yt-dlp timeout:** 30 seconds, prevents hanging processes.
-- **Cache on failure:** serve stale cached data when fresh extraction fails.
+- **Cache on failure:** serve stale cached data when fresh extraction fails (see Caching section for stale-on-error behavior).
+- **Cookie-dependent catalogs without cookies:** Subscriptions, History, and Watch Later return empty arrays (`{ metas: [] }`) when no cookies are available. The manifest always advertises all 5 catalogs — hiding them dynamically would require per-user manifests which Stremio doesn't support well. Empty results are the graceful fallback.
+- **Startup validation:** On server start, check that yt-dlp and FFmpeg binaries exist and are executable. Log a warning if missing but don't fail startup — the `/play` and catalog routes will return errors at request time. This allows the health check and config UI to work even if system deps are missing.
+
+### Content Type Handling
+
+- **YouTube Shorts:** Same video ID format as regular videos. yt-dlp handles them normally. No special treatment needed — they have standard formats available.
+- **Live streams:** yt-dlp returns different format structures for live content. If no downloadable formats are found (live-only HLS), return empty streams array. Do not attempt to proxy live HLS streams.
 
 ---
 
@@ -241,7 +274,8 @@ Sliding-window counter per IP. No external dependencies.
 - **AES-256-CBC** encryption with random 16-byte IV per config encryption
 - **Encryption key** sourced from: `ENCRYPTION_KEY` env → `.encryption-key` file → auto-generate and persist
 - **Cookie handling:** decrypt config → write cookies to temp file → yt-dlp reads → delete immediately. Cookies never logged, cached, or exposed.
-- **FFmpeg spawning:** array args via `child_process.spawn` (no shell, no injection). HTTPS referer header set for YouTube.
+- **FFmpeg spawning:** array args via `child_process.spawn` (no shell, no injection). `--referer https://www.youtube.com` set on input URLs.
+- **yt-dlp spawning:** array args via `child_process.spawn`. `--referer https://www.youtube.com` flag included. 30-second timeout.
 - **Video ID validation:** regex (11 chars, `[a-zA-Z0-9_-]`) before any processing.
 - **CORS:** `Access-Control-Allow-Origin: *` (required by Stremio protocol).
 - **No secrets in URLs/logs:** config is encrypted, cookies are in encrypted config, encryption key never leaves the server.
@@ -258,10 +292,30 @@ Sliding-window counter per IP. No external dependencies.
 | `RATE_LIMIT` | on | Enable/disable rate limiting |
 | `CATALOG_LIMIT` | 100 | Max videos per catalog |
 | `BASE_PATH` | — | URL subfolder mount (e.g., `/tubio`) |
-| `BROWSER_COOKIES` | auto | Chromium cookie mode: auto/on/off |
-| `NOVNC_URL` | `http://{request_host}:6080` | noVNC URL override |
+| `BROWSER_COOKIES` | auto | Chromium cookie mode (see below) |
+| `NOVNC_URL` | `http://{local_ip}:6080` | noVNC URL override (default: server's local IP) |
 | `YT_DLP_PATH` | `yt-dlp` | Custom yt-dlp binary path |
 | `VNC_PASSWORD` | — | noVNC authentication password |
+
+### BROWSER_COOKIES Mode Behavior
+
+| Mode | Behavior |
+|---|---|
+| `auto` (default) | Check if Chromium cookie database exists at `/data/chromium-profile`. If yes, pass `--cookies-from-browser chromium` to yt-dlp. If no, fall back to per-request cookie strings from encrypted config. |
+| `on` | Always pass `--cookies-from-browser chromium` to yt-dlp. If the Chromium profile doesn't exist, yt-dlp will fail — cookie-dependent catalogs return empty results. |
+| `off` | Never use Chromium cookies. Always use per-request cookie strings from encrypted config. Ignore the Chromium profile even if it exists. |
+
+When browser cookies are active, per-request cookie strings from the encrypted config are ignored (browser cookies take precedence).
+
+### Production Runtime Dependencies
+
+Node.js packages (production only):
+- `fastify` — HTTP framework
+- `yt-dlp-wrap` — yt-dlp process wrapper
+- `pino` — structured logging (bundled with Fastify but listed explicitly)
+
+Dev/build dependencies (not in production image):
+- `typescript`, `vitest`, `playwright`, `react`, `react-dom`, `vite`, `@types/*`
 
 ---
 
@@ -303,9 +357,33 @@ Direct implementation of the Stremio addon REST protocol (no SDK).
 - `GET /` — Landing page (serves React SPA)
 - `GET /configure` — Config page (serves React SPA)
 - `POST /api/encrypt` — Encrypt config
-- `GET /health` — Health check
+- `GET /health` — Health check (see below)
 
 All Stremio routes accept an encrypted config string as the first path segment.
+
+### Health Check
+
+`GET /health` returns 200 with JSON:
+```json
+{
+  "status": "ok",
+  "ytdlp": true,
+  "ffmpeg": true
+}
+```
+Checks that yt-dlp and FFmpeg binaries are executable (runs `yt-dlp --version` and `ffmpeg -version`). If either is missing, the field is `false` but status is still 200 — the server is running, just degraded. Cache the binary check results for 5 minutes.
+
+### Graceful Shutdown
+
+On `SIGTERM` or `SIGINT`:
+1. Stop accepting new connections (Fastify `close()`)
+2. Wait up to 10 seconds for in-flight requests to complete
+3. Kill any active FFmpeg child processes
+4. Exit
+
+### SponsorBlock Delivery
+
+SponsorBlock segments are included in the **stream response** as metadata. Each stream object's `description` field includes a note like "SponsorBlock: 3 segments will be skipped" when segments are available. The actual skip behavior depends on the Stremio client — Stremio does not natively support skip segments, so this is informational. The segments data is not currently actionable in the Stremio protocol but is included for future client support and user awareness.
 
 ---
 
@@ -427,7 +505,7 @@ These will be created using the canvas-design skill during implementation.
 | Error handling | String throws | Typed error classes |
 | Testing | 1 test file (subtitles) | Comprehensive: unit + integration + E2E |
 | Docker build | Single stage | Two-stage (smaller production image) |
-| Dependencies | 3 (express, yt-dlp-wrap, node-cache) | Fastify, yt-dlp-wrap, React, Vite, vitest, Playwright |
+| Prod dependencies | 3 (express, yt-dlp-wrap, node-cache) | 2 (fastify, yt-dlp-wrap) + pino bundled with Fastify |
 
 ## What Was Preserved (Conceptually)
 
@@ -440,4 +518,4 @@ These will be created using the canvas-design skill during implementation.
 - Same rate limiting algorithm (sliding window)
 - Same codec strategy (h264 ≤1080p, VP9/AV1 at 4K)
 - Same cookie temp-file security model
-- noVNC URL auto-detection from request hostname
+- noVNC login button (changed: now uses server's local IP instead of request hostname)
