@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "tubioplus-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 8000
+    },
+    {
+      "name": "tubioplus-prod",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["start"],
+      "port": 8000
+    }
+  ]
+}
