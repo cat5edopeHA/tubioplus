@@ -23,6 +23,7 @@ import { parseExtraParams, paginateResults, buildCatalogMetas } from './domains/
 import { prewarmVideoInfo } from './domains/catalog/prewarm.js';
 import { findVideoFormat, findAudioFormat } from './domains/youtube/formats.js';
 import type { VideoInfo } from './domains/youtube/types.js';
+import { VideoNotFoundError, ExtractionError } from './infrastructure/errors.js';
 
 // Augment Fastify request to carry decoded config
 declare module 'fastify' {
@@ -55,6 +56,7 @@ export async function buildApp(env: EnvConfig) {
   });
   const encryptionKey = await loadEncryptionKey(env.encryptionKey);
   const videoCache = new Cache<VideoInfo>();
+  const trendingCache = new Cache<any[]>();
   const ytdlp = new YtDlpService(env.ytDlpPath, videoCache);
   const sponsorblock = new SponsorBlockClient();
   const dearrow = new DeArrowClient();
@@ -145,9 +147,18 @@ export async function buildApp(env: EnvConfig) {
     if (!applyRateLimit(encryptLimiter, request, reply)) {
       return { error: 'Too many requests' };
     }
-    const encrypted = encryptConfig(request.body, encryptionKey);
-    const baseUrl = `${request.protocol}://${request.hostname}${env.basePath}`;
-    return { url: `${baseUrl}/${encrypted}/manifest.json` };
+    if (!request.body || typeof request.body !== 'object' || Array.isArray(request.body)) {
+      reply.status(400);
+      return { error: 'Request body must be a JSON object' };
+    }
+    try {
+      const encrypted = encryptConfig(request.body, encryptionKey);
+      const baseUrl = `${request.protocol}://${request.hostname}${env.basePath}`;
+      return { url: `${baseUrl}/${encrypted}/manifest.json` };
+    } catch {
+      reply.status(400);
+      return { error: 'Failed to encrypt configuration' };
+    }
   });
 
   // Config decryption helper
@@ -219,7 +230,13 @@ export async function buildApp(env: EnvConfig) {
       if (catalogId === 'yt:search' && search) {
         results = await ytdlp.search(search, env.catalogLimit, cookies.cookieFile, cookies.browserCookies);
       } else if (catalogId === 'yt:recommendations') {
-        results = await ytdlp.search('', env.catalogLimit, cookies.cookieFile, cookies.browserCookies);
+        const cachedTrending = trendingCache.get('trending');
+        if (cachedTrending) {
+          results = cachedTrending;
+        } else {
+          results = await ytdlp.search('', env.catalogLimit, cookies.cookieFile, cookies.browserCookies);
+          trendingCache.set('trending', results, 600); // 10 minute TTL
+        }
       }
       // yt:subscriptions, yt:history, yt:watchlater require cookies
       // Return empty if no cookies available (graceful degradation)
@@ -318,14 +335,12 @@ export async function buildApp(env: EnvConfig) {
       }
 
       const rawId = request.params.videoId;
-      if (!isValidVideoId(rawId)) {
-        reply.status(404);
-        return { error: 'Invalid video ID' };
-      }
-
       const height = parseInt(request.query.q ?? '1080', 10);
 
       try {
+        if (!isValidVideoId(rawId)) {
+          throw new VideoNotFoundError(rawId);
+        }
         const info = await ytdlp.getFreshVideoInfo(rawId);
         const formats = info.formats ?? [];
         const video = findVideoFormat(formats, height);
@@ -373,8 +388,12 @@ export async function buildApp(env: EnvConfig) {
 
         return reply.send(ffmpeg.stdout);
       } catch (err) {
+        if (err instanceof VideoNotFoundError) {
+          reply.status(404);
+          return { error: err.message };
+        }
         reply.status(500);
-        return { error: 'Extraction failed' };
+        return { error: err instanceof ExtractionError ? err.message : 'Extraction failed' };
       }
     },
   );
@@ -399,7 +418,7 @@ export async function buildApp(env: EnvConfig) {
       if (!indexHtml && existsSync(indexPath)) {
         const raw = await readFile(indexPath, 'utf-8');
         // Inject BASE_PATH before closing </head>
-        indexHtml = raw.replace('</head>', `<script>window.__BASE_PATH__="${env.basePath}";</script></head>`);
+        indexHtml = raw.replace('</head>', `<script>window.__BASE_PATH__="${env.basePath}";window.__NOVNC_URL__="${env.noVncUrl ?? ''}";</script></head>`);
       }
       if (indexHtml) {
         reply.type('text/html').send(indexHtml);
