@@ -15,6 +15,7 @@
     "node": ">=20.0.0"
   },
   "dependencies": {
+    "@fastify/static": "^9.0.0",
     "fastify": "^5.8.4",
     "pino": "^10.3.1",
     "yt-dlp-wrap": "^2.3.12"
