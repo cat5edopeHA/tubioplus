@@ -158,7 +158,7 @@ export async function buildApp(env: EnvConfig) {
     }
     try {
       const encrypted = encryptConfig(request.body, encryptionKey);
-      const baseUrl = `${request.protocol}://${request.hostname}${env.basePath}`;
+      const baseUrl = `${request.protocol}://${request.host}${env.basePath}`;
       return { url: `${baseUrl}/${encrypted}/manifest.json` };
     } catch {
       reply.status(400);
@@ -314,7 +314,7 @@ export async function buildApp(env: EnvConfig) {
       const cookies = await resolveCookies(config);
       try {
         const info = await ytdlp.getVideoInfoWithStale(videoId, cookies.cookieFile, cookies.browserCookies);
-        const baseUrl = `${request.protocol}://${request.hostname}${env.basePath}`;
+        const baseUrl = `${request.protocol}://${request.host}${env.basePath}`;
 
         let sbCount: number | undefined;
         if (config.sponsorblock.enabled) {

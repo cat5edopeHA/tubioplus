@@ -40,6 +40,7 @@ export interface SearchResult {
   title: string;
   description?: string;
   thumbnail?: string;
+  thumbnails?: Array<{ url: string; height?: number; width?: number }>;
   duration?: number;
   uploader?: string;
   channel_url?: string;
