@@ -124,6 +124,7 @@ docker run -d --name tubioplus --restart unless-stopped \
 - Recommendations catalog uses `getPlaylist('https://www.youtube.com')` not search
 - yt-dlp requires `--js-runtimes node` to solve YouTube's n-challenge (nsig decryption); only Deno is enabled by default
 - Fastify `trustProxy: true` is set so `request.protocol` correctly reflects `X-Forwarded-Proto` from Cloudflare tunnel
+- `request.host` (not `request.hostname`) is used for `baseUrl` construction so the port is preserved for local access
 - Tests use vitest: `npm test`
 
 ## Resolved Issues Log
@@ -135,23 +136,29 @@ docker run -d --name tubioplus --restart unless-stopped \
 5. **Empty catalogs: invalid search** (510d684): `yt:recommendations` handler called `ytdlp.search('')` which produced invalid `ytsearch100:` query; fixed by using `ytdlp.getPlaylist('https://www.youtube.com')` to fetch homepage recommendations
 6. **No video formats / empty streams** (7d5d457): yt-dlp reported `JS runtimes: none` despite Node.js being in the container; YouTube's n-challenge (nsig decryption) requires an external JS runtime but only Deno is enabled by default; fixed by adding `--js-runtimes node` to `BASE_ARGS` in `ytdlp.ts`
 7. **Play route missing cookies** (788afa0): `getFreshVideoInfo` in the play route was called without browser cookies, so age-restricted content would fail; fixed by passing `useBrowserCookies` (computed at startup) to the play route
-8. **Stream URLs use http:// behind Cloudflare** (this commit): `request.protocol` returned `http` behind Cloudflare tunnel because Fastify wasn't trusting proxy headers; fixed by adding `trustProxy: true` to Fastify config so `X-Forwarded-Proto` is respected
+8. **Stream URLs use http:// behind Cloudflare** (3280dd8): `request.protocol` returned `http` behind Cloudflare tunnel because Fastify wasn't trusting proxy headers; fixed by adding `trustProxy: true` to Fastify config so `X-Forwarded-Proto` is respected
+9. **Missing catalog thumbnails** (69296b7): yt-dlp `--flat-playlist` returns `thumbnails` (array of objects with url/height/width) not `thumbnail` (single string); added `thumbnails` array to `SearchResult` type and `bestThumbnail()` helper in catalog handler that picks the highest resolution entry
+10. **Stream URLs missing port on local access** (69296b7): Fastify's `request.hostname` strips the port, so `baseUrl` was built as `http://192.168.10.9` instead of `http://192.168.10.9:8000`; fixed by using `request.host` (includes port) in both the encrypt API and stream route
 
 ## Verified Working
 
 - Health endpoint (`/health`) returns `{"status":"ok","ytdlp":true,"ffmpeg":true}`
 - All five catalogs return results: recommendations (20), subscriptions (20), history (20), watch later (20), search (20)
+- Catalog entries include proper YouTube thumbnail URLs (hq720.jpg)
 - Stream endpoint returns four quality levels: 360p, 480p, 720p, 1080p
+- Stream URLs include correct port when accessed locally (e.g. `http://192.168.10.9:8000/play/...`)
 - Play route streams video data (HTTP 200, Content-Type video/mp4, FFmpeg mux confirmed)
 - Play route works through Cloudflare tunnel (`tubioplus.m2bw.net`)
+- Encrypt API returns correct URL with port for local access
 - Google login persists across container restarts via `/data/chromium-profile` on `tubio-data` volume
 - noVNC accessible at `http://192.168.10.9:6080/vnc.html`
 - Addon installed in Stremio and actively receiving catalog/meta/stream requests
+- End-to-end Stremio playback confirmed working (video plays, FFmpeg mux runs correctly)
+- Subtitles endpoint returns proper SRT URLs for multiple languages plus auto-captions
+- SponsorBlock/DeArrow frontend config buttons work correctly
 
 ## Not Yet Tested
 
-- End-to-end Stremio playback (selecting a video in Stremio UI and watching it play to completion)
-- SponsorBlock segment skipping during playback
-- DeArrow title/thumbnail replacement
-- Subtitle display in Stremio
+- SponsorBlock segment count in stream description (needs video with SponsorBlock data)
+- DeArrow title/thumbnail replacement (needs video with DeArrow branding data)
 - Long-running stream stability (FFmpeg process lifecycle over multi-hour videos)
