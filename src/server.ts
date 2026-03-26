@@ -24,6 +24,22 @@ async function checkBinary(command: string, args: string[]): Promise<boolean> {
   }
 }
 
+async function waitForChromium(maxWaitMs: number = 15000): Promise<boolean> {
+  const interval = 1000;
+  let elapsed = 0;
+  while (elapsed < maxWaitMs) {
+    const found = await new Promise<boolean>((resolve) => {
+      const proc = spawn('pgrep', ['-x', 'chromium'], { stdio: ['ignore', 'pipe', 'pipe'] });
+      proc.on('close', (code) => resolve(code === 0));
+      proc.on('error', () => resolve(false));
+    });
+    if (found) return true;
+    await new Promise((r) => setTimeout(r, interval));
+    elapsed += interval;
+  }
+  return false;
+}
+
 const BANNER = `
   ╔════════════════════════════╗
   ║       Tubio+ v2.0.0       ║
@@ -47,6 +63,17 @@ async function main() {
   const ffmpegOk = await checkBinary('ffmpeg', ['-version']);
   if (!ytdlpOk) console.warn('WARNING: yt-dlp not found or not executable. Video features will fail.');
   if (!ffmpegOk) console.warn('WARNING: FFmpeg not found or not executable. Streaming above 360p will fail.');
+
+  // Wait for Chromium to be ready before accepting requests
+  if (env.browserCookies !== 'off') {
+    console.log('Waiting for Chromium to start...');
+    const chromiumReady = await waitForChromium(15000);
+    if (chromiumReady) {
+      console.log('Chromium is running.');
+    } else {
+      console.warn('WARNING: Chromium did not start within 15 seconds. Proceeding anyway.');
+    }
+  }
 
   const app = await buildApp(env);
 

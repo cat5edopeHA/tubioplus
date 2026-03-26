@@ -25,7 +25,7 @@ export function decryptConfig(encryptedStr: string, key: Buffer): Record<string,
   return JSON.parse(decrypted.toString('utf-8'));
 }
 
-export async function loadEncryptionKey(envKey: string | undefined, keyFilePath: string = '.encryption-key'): Promise<Buffer> {
+export async function loadEncryptionKey(envKey: string | undefined, keyFilePath: string = '/data/.encryption-key'): Promise<Buffer> {
   if (envKey) return Buffer.from(envKey, 'hex');
   if (existsSync(keyFilePath)) {
     const hex = (await readFile(keyFilePath, 'utf-8')).trim();

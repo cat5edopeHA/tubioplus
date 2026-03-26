@@ -69,6 +69,11 @@ export class YtDlpService {
     this.timeoutMs = timeoutMs;
   }
 
+  clearCaches(): void {
+    this.cache.clear();
+    this.searchCache.clear();
+  }
+
   async getVideoInfo(videoId: string, cookieFile?: string, browserCookies?: boolean): Promise<VideoInfo> {
     const cached = this.cache.get(`video:${videoId}`);
     if (cached) return cached;
@@ -105,7 +110,9 @@ export class YtDlpService {
     const output = await this.run(args);
     const data = JSON.parse(output);
     const results = (data.entries ?? []) as SearchResult[];
-    this.searchCache.set(cacheKey, results, 300); // 5 minute TTL
+    if (results.length > 0) {
+      this.searchCache.set(cacheKey, results, 300); // 5 minute TTL
+    }
     return results;
   }
 
@@ -119,7 +126,9 @@ export class YtDlpService {
     const output = await this.run(args);
     const data = JSON.parse(output);
     const results = (data.entries ?? []) as SearchResult[];
-    this.searchCache.set(cacheKey, results, 300); // 5 minute TTL
+    if (results.length > 0) {
+      this.searchCache.set(cacheKey, results, 300); // 5 minute TTL
+    }
     return results;
   }
 

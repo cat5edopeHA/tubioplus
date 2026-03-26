@@ -23,7 +23,7 @@ export function buildStreamList(formats: VideoFormat[], videoId: string, baseUrl
       url: `${baseUrl}/play/${videoId}.mp4?q=${height}`,
       name: `[Tubio+] ${label}`,
       description,
-      behaviorHints: { filename: `${videoId}-${height}p.mp4`, bingeGroup: `tubioplus-${height}p` },
+      behaviorHints: { filename: `${videoId}-${height}p.mp4`, bingeGroup: `tubioplus-${height}p`, notWebReady: true },
     });
   }
   return streams;

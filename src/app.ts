@@ -4,7 +4,8 @@ import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { spawn, type ChildProcess } from 'node:child_process';
+import { spawn, execSync, type ChildProcess } from 'node:child_process';
+import { rmSync, mkdirSync } from 'node:fs';
 import type { EnvConfig } from './shared/env.js';
 import { createLogger } from './infrastructure/logger.js';
 import { RateLimiter } from './infrastructure/rate-limit.js';
@@ -63,8 +64,8 @@ export async function buildApp(env: EnvConfig) {
   const sponsorblock = new SponsorBlockClient();
   const dearrow = new DeArrowClient();
 
-  // Resolve whether browser cookies should be used (computed once at startup)
-  const useBrowserCookies = env.browserCookies === 'on' || (env.browserCookies === 'auto' && existsSync('/data/chromium-profile'));
+  // Resolve whether browser cookies should be used (mutable for reset endpoint)
+  let useBrowserCookies = env.browserCookies === 'on' || (env.browserCookies === 'auto' && existsSync('/data/chromium-profile'));
 
   // Rate limiters
   const playLimiter = new RateLimiter({ windowMs: 60000, max: 15 });
@@ -166,6 +167,36 @@ export async function buildApp(env: EnvConfig) {
     }
   });
 
+  // Session reset API
+  app.post(`${env.basePath}/api/reset`, async (request, reply) => {
+    if (!applyRateLimit(apiLimiter, request, reply)) {
+      return { error: 'Too many requests' };
+    }
+    try {
+      // Kill chromium (supervisord auto restarts it with fresh profile)
+      try { execSync('pkill -f chromium', { timeout: 5000 }); } catch { /* may not be running */ }
+
+      // Wipe chromium profile and recreate empty directory
+      try {
+        rmSync('/data/chromium-profile', { recursive: true, force: true });
+        mkdirSync('/data/chromium-profile', { recursive: true });
+      } catch { /* ignore */ }
+
+      // Clear all in-memory caches
+      ytdlp.clearCaches();
+      videoCache.clear();
+      trendingCache.clear();
+
+      // Disable browser cookies until next login
+      useBrowserCookies = false;
+
+      return { status: 'ok', message: 'Session cleared. Log in again via noVNC.' };
+    } catch {
+      reply.status(500);
+      return { error: 'Failed to reset session' };
+    }
+  });
+
   // Config decryption helper
   function decryptRequestConfig(configStr: string): AppConfig {
     try {
@@ -250,7 +281,9 @@ export async function buildApp(env: EnvConfig) {
           results = cachedTrending;
         } else {
           results = await ytdlp.getPlaylist('https://www.youtube.com', env.catalogLimit, cookies.cookieFile, cookies.browserCookies);
-          trendingCache.set('trending', results, 600); // 10 minute TTL
+          if (results.length > 0) {
+            trendingCache.set('trending', results, 600); // 10 minute TTL
+          }
         }
       }
       // yt:subscriptions, yt:history, yt:watchlater require cookies
@@ -383,6 +416,7 @@ export async function buildApp(env: EnvConfig) {
             headers: { Referer: 'https://www.youtube.com' },
           });
           reply.header('Content-Type', 'video/mp4');
+          reply.header('Accept-Ranges', 'none');
           return reply.send(response.body);
         }
 
@@ -395,8 +429,14 @@ export async function buildApp(env: EnvConfig) {
 
         const ffmpeg = spawn('ffmpeg', [
           '-headers', 'Referer: https://www.youtube.com\r\n',
+          '-reconnect', '1',
+          '-reconnect_streamed', '1',
+          '-reconnect_delay_max', '5',
           '-i', video.url,
           '-headers', 'Referer: https://www.youtube.com\r\n',
+          '-reconnect', '1',
+          '-reconnect_streamed', '1',
+          '-reconnect_delay_max', '5',
           '-i', audio.url,
           '-c:v', 'copy',
           '-c:a', 'copy',
@@ -409,7 +449,13 @@ export async function buildApp(env: EnvConfig) {
         activeProcesses.add(ffmpeg);
         ffmpeg.on('close', () => activeProcesses.delete(ffmpeg));
 
+        // Log FFmpeg stderr at debug level for diagnostics
+        ffmpeg.stderr.on('data', (chunk: Buffer) => {
+          app.log.debug({ ffmpeg: chunk.toString().trim() }, 'ffmpeg stderr');
+        });
+
         reply.header('Content-Type', 'video/mp4');
+        reply.header('Accept-Ranges', 'none');
         reply.raw.on('close', () => ffmpeg.kill('SIGTERM'));
 
         return reply.send(ffmpeg.stdout);
