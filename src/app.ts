@@ -13,6 +13,7 @@ import { YtDlpService } from './domains/youtube/ytdlp.js';
 import { SponsorBlockClient } from './domains/sponsorblock/client.js';
 import { DeArrowClient } from './domains/dearrow/client.js';
 import { stremioPlugin } from './domains/stremio/plugin.js';
+import { manifest } from './domains/stremio/manifest.js';
 import { loadEncryptionKey, decryptConfig, encryptConfig } from './domains/config/encryption.js';
 import { mergeWithDefaults, type AppConfig } from './domains/config/schema.js';
 import { isValidVideoId, extractVideoId } from './shared/validation.js';
@@ -139,7 +140,7 @@ export async function buildApp(env: EnvConfig) {
     return { status: 'ok', ytdlp: ytdlpOk, ffmpeg: ffmpegOk };
   });
 
-  // Stremio manifest
+  // Stremio manifest (bare, without config prefix)
   await app.register(stremioPlugin, { prefix: env.basePath || undefined });
 
   // Config encryption API
@@ -183,9 +184,19 @@ export async function buildApp(env: EnvConfig) {
     return {};
   }
 
-  // Stremio catalog route -- uses regex constraint on :config to avoid collisions
+  // Stremio routes with config prefix
   const stremioPrefix = env.basePath;
 
+  // Config-prefixed manifest (Stremio fetches this URL when installing the addon)
+  app.get<{ Params: { config: string } }>(
+    `${stremioPrefix}/:config([A-Za-z0-9_\\-]{32,})/manifest.json`,
+    async (_request, reply) => {
+      reply.header('Cache-Control', 'max-age=86400');
+      return manifest;
+    },
+  );
+
+  // Stremio catalog route -- uses regex constraint on :config to avoid collisions
   app.get<{ Params: { config: string; type: string; id: string } }>(
     `${stremioPrefix}/:config([A-Za-z0-9_\\-]{32,})/catalog/:type/:id.json`,
     async (request, reply) => {
