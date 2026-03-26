@@ -189,7 +189,7 @@ export async function buildApp(env: EnvConfig) {
 
   // Config-prefixed manifest (Stremio fetches this URL when installing the addon)
   app.get<{ Params: { config: string } }>(
-    `${stremioPrefix}/:config([A-Za-z0-9_\\-]{32,})/manifest.json`,
+    `${stremioPrefix}/:config([A-Za-z0-9_\\\\-]{32,})/manifest.json`,
     async (_request, reply) => {
       reply.header('Cache-Control', 'max-age=86400');
       return manifest;
@@ -198,7 +198,7 @@ export async function buildApp(env: EnvConfig) {
 
   // Stremio catalog route -- uses regex constraint on :config to avoid collisions
   app.get<{ Params: { config: string; type: string; id: string } }>(
-    `${stremioPrefix}/:config([A-Za-z0-9_\\-]{32,})/catalog/:type/:id.json`,
+    `${stremioPrefix}/:config([A-Za-z0-9_\\\\-]{32,})/catalog/:type/:id.json`,
     async (request, reply) => {
       if (!applyRateLimit(apiLimiter, request, reply)) return { metas: [] };
       const config = decryptRequestConfig(request.params.config);
@@ -212,7 +212,7 @@ export async function buildApp(env: EnvConfig) {
   );
 
   app.get<{ Params: { config: string; type: string; id: string; extra: string } }>(
-    `${stremioPrefix}/:config([A-Za-z0-9_\\-]{32,})/catalog/:type/:id/:extra.json`,
+    `${stremioPrefix}/:config([A-Za-z0-9_\\\\-]{32,})/catalog/:type/:id/:extra.json`,
     async (request, reply) => {
       if (!applyRateLimit(apiLimiter, request, reply)) return { metas: [] };
       const config = decryptRequestConfig(request.params.config);
@@ -245,7 +245,7 @@ export async function buildApp(env: EnvConfig) {
         if (cachedTrending) {
           results = cachedTrending;
         } else {
-          results = await ytdlp.search('', env.catalogLimit, cookies.cookieFile, cookies.browserCookies);
+          results = await ytdlp.getPlaylist('https://www.youtube.com', env.catalogLimit, cookies.cookieFile, cookies.browserCookies);
           trendingCache.set('trending', results, 600); // 10 minute TTL
         }
       }
@@ -278,7 +278,7 @@ export async function buildApp(env: EnvConfig) {
 
   // Stremio meta route
   app.get<{ Params: { config: string; type: string; id: string } }>(
-    `${stremioPrefix}/:config([A-Za-z0-9_\\-]{32,})/meta/:type/:id.json`,
+    `${stremioPrefix}/:config([A-Za-z0-9_\\\\-]{32,})/meta/:type/:id.json`,
     async (request, reply) => {
       if (!applyRateLimit(apiLimiter, request, reply)) return { meta: {} };
       const config = decryptRequestConfig(request.params.config);
@@ -300,7 +300,7 @@ export async function buildApp(env: EnvConfig) {
 
   // Stremio stream route
   app.get<{ Params: { config: string; type: string; id: string } }>(
-    `${stremioPrefix}/:config([A-Za-z0-9_\\-]{32,})/stream/:type/:id.json`,
+    `${stremioPrefix}/:config([A-Za-z0-9_\\\\-]{32,})/stream/:type/:id.json`,
     async (request, reply) => {
       if (!applyRateLimit(apiLimiter, request, reply)) return { streams: [] };
       const config = decryptRequestConfig(request.params.config);
@@ -329,7 +329,7 @@ export async function buildApp(env: EnvConfig) {
 
   // Stremio subtitles route
   app.get<{ Params: { config: string; type: string; id: string } }>(
-    `${stremioPrefix}/:config([A-Za-z0-9_\\-]{32,})/subtitles/:type/:id.json`,
+    `${stremioPrefix}/:config([A-Za-z0-9_\\\\-]{32,})/subtitles/:type/:id.json`,
     async (request, reply) => {
       if (!applyRateLimit(apiLimiter, request, reply)) return { subtitles: [] };
       const config = decryptRequestConfig(request.params.config);
