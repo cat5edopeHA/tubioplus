@@ -20,6 +20,7 @@ RUN python3 -c "import urllib.request; urllib.request.urlretrieve('https://githu
     && chmod +x /usr/local/bin/yt-dlp
 
 WORKDIR /app
+ENV NODE_ENV=production
 COPY package*.json ./
 RUN npm ci --omit=dev
 COPY --from=build /app/dist/ dist/
