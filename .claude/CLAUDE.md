@@ -120,6 +120,7 @@ docker run -d --name tubioplus --restart unless-stopped \
 - The app silently catches yt-dlp errors in catalog handlers and returns `{ metas: [] }` — check yt-dlp directly inside the container when debugging empty results
 - supervisorctl socket is not configured, so `supervisorctl status` won't work inside the container; use `ps aux` instead
 - Chromium creates `SingletonLock`/`SingletonSocket`/`SingletonCookie` files that must be cleaned on startup (handled in supervisord.conf)
+- Recommendations catalog uses `getPlaylist('https://www.youtube.com')` not search — yt-dlp's YouTube tab extractor pulls the homepage feed, which is personalized when cookies are available
 - Tests use vitest: `npm test`
 
 ## Resolved Issues Log
@@ -127,11 +128,19 @@ docker run -d --name tubioplus --restart unless-stopped \
 1. **pino-pretty crash** (d96a0ff): Missing `NODE_ENV=production` in Dockerfile production stage caused dev transport load attempt
 2. **Chromium exit code 21** (d96a0ff): Missing `--no-first-run --disable-dev-shm-usage` flags + stale singleton lock files from persistent volume
 3. **Addon install failed** (312ce0a): Missing config-prefixed manifest route (`/:config/manifest.json`)
-4. **Empty catalogs** (1fde637): `--cookies-from-browser chromium` used default path `~/.config/chromium/` instead of container profile at `/data/chromium-profile`; fixed with `chromium:/data/chromium-profile` syntax
+4. **Empty catalogs: cookie path** (1fde637): `--cookies-from-browser chromium` used default path `~/.config/chromium/` instead of container profile at `/data/chromium-profile`; fixed with `chromium:/data/chromium-profile` syntax
+5. **Empty catalogs: invalid search** (510d684): `yt:recommendations` handler called `ytdlp.search('')` which produced invalid `ytsearch100:` query; fixed by using `ytdlp.getPlaylist('https://www.youtube.com')` to fetch homepage recommendations
+
+## Verified Working
+
+- Health endpoint (`/health`) returns `{"status":"ok","ytdlp":true,"ffmpeg":true}`
+- Recommendations catalog returns 20 personalized metas (tested with Google account logged in via noVNC)
+- Google login persists across container restarts via `/data/chromium-profile` on `tubio-data` volume
+- noVNC accessible at `http://192.168.10.9:6080/vnc.html`
 
 ## Not Yet Tested
 
 - Installing the addon in Stremio (manifest route fixed in 312ce0a but not end-to-end tested)
 - Video playback (FFmpeg muxing, stream proxying)
-- Cookie-based catalogs (subscriptions, history, watch later) require Google login through noVNC first
-- Google login through noVNC for cookie authentication
+- Cookie-based catalogs (subscriptions, history, watch later)
+- Search catalog (`yt:search`)
