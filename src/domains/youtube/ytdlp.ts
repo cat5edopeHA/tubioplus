@@ -30,7 +30,7 @@ export interface YtDlpPlaylistOptions {
 
 export type YtDlpOptions = YtDlpInfoOptions | YtDlpSearchOptions | YtDlpPlaylistOptions;
 
-const BASE_ARGS = ['--no-warnings', '--no-cache-dir', '--no-playlist', '-J', '--referer', 'https://www.youtube.com'];
+const BASE_ARGS = ['--no-warnings', '--no-cache-dir', '--no-playlist', '-J', '--js-runtimes', 'node', '--referer', 'https://www.youtube.com'];
 
 export function buildYtDlpArgs(videoId: string, options: YtDlpOptions): string[] {
   const args = [...BASE_ARGS];
