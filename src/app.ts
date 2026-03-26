@@ -62,6 +62,9 @@ export async function buildApp(env: EnvConfig) {
   const sponsorblock = new SponsorBlockClient();
   const dearrow = new DeArrowClient();
 
+  // Resolve whether browser cookies should be used (computed once at startup)
+  const useBrowserCookies = env.browserCookies === 'on' || (env.browserCookies === 'auto' && existsSync('/data/chromium-profile'));
+
   // Rate limiters
   const playLimiter = new RateLimiter({ windowMs: 60000, max: 15 });
   const encryptLimiter = new RateLimiter({ windowMs: 60000, max: 10 });
@@ -174,7 +177,7 @@ export async function buildApp(env: EnvConfig) {
 
   // Cookie resolution helper
   async function resolveCookies(config: AppConfig): Promise<{ cookieFile?: string; browserCookies?: boolean; cleanup?: () => Promise<void> }> {
-    if (env.browserCookies === 'on' || (env.browserCookies === 'auto' && existsSync('/data/chromium-profile'))) {
+    if (useBrowserCookies) {
       return { browserCookies: true };
     }
     if (config.cookies) {
@@ -363,7 +366,7 @@ export async function buildApp(env: EnvConfig) {
         if (!isValidVideoId(rawId)) {
           throw new VideoNotFoundError(rawId);
         }
-        const info = await ytdlp.getFreshVideoInfo(rawId);
+        const info = await ytdlp.getFreshVideoInfo(rawId, undefined, useBrowserCookies || undefined);
         const formats = info.formats ?? [];
         const video = findVideoFormat(formats, height);
         if (!video) {
