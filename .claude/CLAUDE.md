@@ -88,6 +88,12 @@ Plus a bare `/manifest.json` (registered via stremio plugin).
 
 The config param is validated with regex `[A-Za-z0-9_\\-]{32,}`.
 
+## API Endpoints (non-Stremio)
+
+- `GET /health` — cached health check (yt-dlp + ffmpeg)
+- `POST /api/encrypt` — encrypt config JSON into addon URL
+- `POST /api/reset` — clear session: kills chromium, wipes `/data/chromium-profile`, clears all in-memory caches, disables browser cookies flag; supervisord auto-restarts chromium with a fresh profile
+
 ## Cookie Flow
 
 1. `BROWSER_COOKIES` env var controls behavior: `auto` (default), `on`, `off`
@@ -96,6 +102,7 @@ The config param is validated with regex `[A-Za-z0-9_\\-]{32,}`.
 4. User logs into Google via noVNC (Chromium opens to Google sign-in on startup)
 5. After login, yt-dlp can access subscriptions, history, watch later
 6. The play route uses `useBrowserCookies` directly (no config token needed for cookie access)
+7. `POST /api/reset` wipes the profile and flips `useBrowserCookies` to `false`; user must log in again via noVNC
 
 ## Docker Build & Deploy (LXC 101)
 
@@ -125,6 +132,9 @@ docker run -d --name tubioplus --restart unless-stopped \
 - yt-dlp requires `--js-runtimes node` to solve YouTube's n-challenge (nsig decryption); only Deno is enabled by default
 - Fastify `trustProxy: true` is set so `request.protocol` correctly reflects `X-Forwarded-Proto` from Cloudflare tunnel
 - `request.host` (not `request.hostname`) is used for `baseUrl` construction so the port is preserved for local access
+- FFmpeg play route uses `-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5` on both inputs to handle YouTube dropping HTTP connections mid-stream
+- Stream behaviorHints include `notWebReady: true` so Stremio uses its transcoding pipeline instead of attempting range requests on the live-muxed stream
+- FFmpeg stderr is logged at debug level for diagnosing stream issues
 - Tests use vitest: `npm test`
 
 ## Resolved Issues Log
@@ -139,6 +149,8 @@ docker run -d --name tubioplus --restart unless-stopped \
 8. **Stream URLs use http:// behind Cloudflare** (3280dd8): `request.protocol` returned `http` behind Cloudflare tunnel because Fastify wasn't trusting proxy headers; fixed by adding `trustProxy: true` to Fastify config so `X-Forwarded-Proto` is respected
 9. **Missing catalog thumbnails** (69296b7): yt-dlp `--flat-playlist` returns `thumbnails` (array of objects with url/height/width) not `thumbnail` (single string); added `thumbnails` array to `SearchResult` type and `bestThumbnail()` helper in catalog handler that picks the highest resolution entry
 10. **Stream URLs missing port on local access** (69296b7): Fastify's `request.hostname` strips the port, so `baseUrl` was built as `http://192.168.10.9` instead of `http://192.168.10.9:8000`; fixed by using `request.host` (includes port) in both the encrypt API and stream route
+11. **Videos restart midway through playback**: YouTube throttles/drops HTTP connections on FFmpeg's DASH downloads mid-stream; added `-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5` flags to both FFmpeg inputs so dropped connections auto-retry; added `notWebReady: true` to stream behaviorHints so Stremio doesn't attempt range requests on the live-muxed pipe; added `Accept-Ranges: none` response header on the play route; added FFmpeg stderr logging at debug level
+12. **Clear session / reset button**: Added `POST /api/reset` endpoint that kills chromium (supervisord auto-restarts it), wipes `/data/chromium-profile`, clears all in-memory caches (video, trending, search), and flips `useBrowserCookies` to `false`; added `clearCaches()` method to `YtDlpService`; added "Clear Session" button in configure page Auth step with browser `confirm()` prompt and visual feedback
 
 ## Verified Working
 
@@ -161,4 +173,5 @@ docker run -d --name tubioplus --restart unless-stopped \
 
 - SponsorBlock segment count in stream description (needs video with SponsorBlock data)
 - DeArrow title/thumbnail replacement (needs video with DeArrow branding data)
-- Long-running stream stability (FFmpeg process lifecycle over multi-hour videos)
+- Long-running stream stability with FFmpeg reconnect flags (verify streams no longer restart mid-playback)
+- Session reset via configure page (verify chromium restarts, cookies cleared, can re-login via noVNC)

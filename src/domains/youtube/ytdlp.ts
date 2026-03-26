@@ -123,6 +123,11 @@ export class YtDlpService {
     return results;
   }
 
+  clearCaches(): void {
+    this.cache.clear();
+    this.searchCache.clear();
+  }
+
   async writeCookieFile(cookies: string): Promise<string> {
     const path = join(tmpdir(), `tubio-cookies-${randomUUID()}.txt`);
     await writeFile(path, cookies, 'utf-8');

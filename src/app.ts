@@ -1,10 +1,10 @@
 import Fastify from 'fastify';
 import fastifyStatic from '@fastify/static';
 import { existsSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
+import { readFile, rm } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { spawn, type ChildProcess } from 'node:child_process';
+import { spawn, execSync, type ChildProcess } from 'node:child_process';
 import type { EnvConfig } from './shared/env.js';
 import { createLogger } from './infrastructure/logger.js';
 import { RateLimiter } from './infrastructure/rate-limit.js';
@@ -63,8 +63,8 @@ export async function buildApp(env: EnvConfig) {
   const sponsorblock = new SponsorBlockClient();
   const dearrow = new DeArrowClient();
 
-  // Resolve whether browser cookies should be used (computed once at startup)
-  const useBrowserCookies = env.browserCookies === 'on' || (env.browserCookies === 'auto' && existsSync('/data/chromium-profile'));
+  // Resolve whether browser cookies should be used (mutable for reset)
+  let useBrowserCookies = env.browserCookies === 'on' || (env.browserCookies === 'auto' && existsSync('/data/chromium-profile'));
 
   // Rate limiters
   const playLimiter = new RateLimiter({ windowMs: 60000, max: 15 });
@@ -163,6 +163,33 @@ export async function buildApp(env: EnvConfig) {
     } catch {
       reply.status(400);
       return { error: 'Failed to encrypt configuration' };
+    }
+  });
+
+  // Session reset API
+  app.post(`${env.basePath}/api/reset`, async (request, reply) => {
+    if (!applyRateLimit(encryptLimiter, request, reply)) {
+      return { error: 'Too many requests' };
+    }
+    try {
+      // Kill chromium so it releases the profile directory
+      try { execSync('pkill -f chromium || true', { timeout: 5000 }); } catch { /* ignore */ }
+      // Brief delay for chromium to release file locks
+      await new Promise((r) => setTimeout(r, 1000));
+      // Remove the profile directory (supervisord will restart chromium with a fresh one)
+      await rm('/data/chromium-profile', { recursive: true, force: true });
+      // Clear all in-memory caches
+      videoCache.clear();
+      trendingCache.clear();
+      ytdlp.clearCaches();
+      // Disable browser cookies until next login
+      useBrowserCookies = false;
+      app.log.info('Session reset: chromium profile wiped, caches cleared');
+      return { status: 'ok', message: 'Session cleared. Log in again via noVNC.' };
+    } catch (err) {
+      app.log.error({ err }, 'Session reset failed');
+      reply.status(500);
+      return { error: 'Reset failed' };
     }
   });
 
@@ -394,8 +421,14 @@ export async function buildApp(env: EnvConfig) {
         }
 
         const ffmpeg = spawn('ffmpeg', [
+          '-reconnect', '1',
+          '-reconnect_streamed', '1',
+          '-reconnect_delay_max', '5',
           '-headers', 'Referer: https://www.youtube.com\r\n',
           '-i', video.url,
+          '-reconnect', '1',
+          '-reconnect_streamed', '1',
+          '-reconnect_delay_max', '5',
           '-headers', 'Referer: https://www.youtube.com\r\n',
           '-i', audio.url,
           '-c:v', 'copy',
@@ -409,7 +442,14 @@ export async function buildApp(env: EnvConfig) {
         activeProcesses.add(ffmpeg);
         ffmpeg.on('close', () => activeProcesses.delete(ffmpeg));
 
+        // Log FFmpeg stderr for debugging stream issues
+        ffmpeg.stderr.on('data', (chunk: Buffer) => {
+          const msg = chunk.toString().trim();
+          if (msg) app.log.debug({ ffmpeg: msg }, 'ffmpeg stderr');
+        });
+
         reply.header('Content-Type', 'video/mp4');
+        reply.header('Accept-Ranges', 'none');
         reply.raw.on('close', () => ffmpeg.kill('SIGTERM'));
 
         return reply.send(ffmpeg.stdout);
