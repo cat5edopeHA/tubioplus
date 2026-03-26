@@ -53,21 +53,21 @@ volumes:
   tubio-data:
 ```
 
-### 2. Sign into YouTube
+### 2. Configure and install
 
-Open `http://your-host:6080/vnc.html` in your browser. You'll see a Chromium window — sign into your Google account just like you normally would.
-
-<img width="800" alt="YouTube logged in via noVNC embedded browser" src="./docs/screenshots/novnc-login.png" /><br>
-
-### 3. Configure and install
-
-Open `http://your-host:8000/configure` to walk through setup.
+Open `http://your-host:8000/configure` to get started.
 
 <img width="800" alt="TubioPlus landing page with Configure and Install buttons" src="./docs/screenshots/landing.png" /><br>
 
-**Authentication** — paste cookies manually or click "open YouTube login" to use the embedded browser.
+Click **Configure** to walk through setup.
+
+**Authentication** — paste Netscape format cookies manually, or click "open YouTube login" to sign in through the embedded browser.
 
 <img width="800" alt="Authentication step with cookie paste or browser login option" src="./docs/screenshots/auth.png" /><br>
+
+If you click "open YouTube login", a Chromium browser opens via noVNC at `http://your-host:6080/vnc.html`. Sign into your Google account just like you normally would. Your session persists across container restarts.
+
+<img width="800" alt="YouTube logged in via noVNC embedded browser" src="./docs/screenshots/novnc-login.png" /><br>
 
 **Quality** — pick your max quality from 360p to 4K.
 
