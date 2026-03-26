@@ -1,3 +1,6 @@
+> [!IMPORTANT]
+> **TubioPlus v2.0 is coming.** The `nightly` branch contains a complete ground-up rewrite in TypeScript with Fastify, browser-based YouTube login, subtitles, SponsorBlock, DeArrow, and more. When it's ready, it will replace this branch entirely. Check out the [`nightly` branch](https://github.com/cat5edopeHA/tubioplus/tree/nightly) to try it now. This branch (`main`) and the `testing` branch will be removed once v2.0 is promoted to `main`.
+
 # Tubio+
 
 YouTube addon for Stremio — stream YouTube content directly in Stremio Lite on iOS, tvOS, and web.
