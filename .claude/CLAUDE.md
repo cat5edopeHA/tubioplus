@@ -127,4 +127,11 @@ docker run -d --name tubioplus --restart unless-stopped \
 1. **pino-pretty crash** (d96a0ff): Missing `NODE_ENV=production` in Dockerfile production stage caused dev transport load attempt
 2. **Chromium exit code 21** (d96a0ff): Missing `--no-first-run --disable-dev-shm-usage` flags + stale singleton lock files from persistent volume
 3. **Addon install failed** (312ce0a): Missing config-prefixed manifest route (`/:config/manifest.json`)
-4. **Empty catalogs** (pending): yt-dlp `--cookies-from-browser chromium` looked in wrong path; fix: use `chromium:/data/chromium-profile`
+4. **Empty catalogs** (1fde637): `--cookies-from-browser chromium` used default path `~/.config/chromium/` instead of container profile at `/data/chromium-profile`; fixed with `chromium:/data/chromium-profile` syntax
+
+## Not Yet Tested
+
+- Installing the addon in Stremio (manifest route fixed in 312ce0a but not end-to-end tested)
+- Video playback (FFmpeg muxing, stream proxying)
+- Cookie-based catalogs (subscriptions, history, watch later) require Google login through noVNC first
+- Google login through noVNC for cookie authentication
