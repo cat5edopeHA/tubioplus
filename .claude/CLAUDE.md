@@ -9,8 +9,8 @@ TubioPlus is a Stremio addon that serves YouTube content (search, recommendation
 
 ## Architecture
 
-- **Runtime:** Node.js 20 + TypeScript, Fastify HTTP server
-- **Video extraction:** yt-dlp (search, playlist, video info, formats)
+- **Runtime:** Node.js 20 + TypeScript, Fastify HTTP server (trustProxy enabled)
+- **Video extraction:** yt-dlp with `--js-runtimes node` for YouTube n-challenge solving
 - **Browser cookies:** Embedded Chromium with persistent profile at `/data/chromium-profile`, accessed by yt-dlp via `--cookies-from-browser 'chromium:/data/chromium-profile'`
 - **Display server:** Xvfb + x11vnc + websockify (noVNC) for remote Chromium access (Google login)
 - **Process management:** supervisord runs five services: node, chromium, xvfb, x11vnc, websockify
@@ -91,10 +91,11 @@ The config param is validated with regex `[A-Za-z0-9_\\-]{32,}`.
 ## Cookie Flow
 
 1. `BROWSER_COOKIES` env var controls behavior: `auto` (default), `on`, `off`
-2. When `auto`: checks if `/data/chromium-profile` exists, enables browser cookies if so
+2. When `auto`: checks if `/data/chromium-profile` exists at startup, sets `useBrowserCookies` flag
 3. yt-dlp is called with `--cookies-from-browser 'chromium:/data/chromium-profile'`
 4. User logs into Google via noVNC (Chromium opens to Google sign-in on startup)
 5. After login, yt-dlp can access subscriptions, history, watch later
+6. The play route uses `useBrowserCookies` directly (no config token needed for cookie access)
 
 ## Docker Build & Deploy (LXC 101)
 
@@ -117,10 +118,12 @@ docker run -d --name tubioplus --restart unless-stopped \
 ## Development Notes
 
 - `NODE_ENV=production` is baked into the Dockerfile production stage (not passed at runtime)
-- The app silently catches yt-dlp errors in catalog handlers and returns `{ metas: [] }` — check yt-dlp directly inside the container when debugging empty results
+- The app silently catches yt-dlp errors in catalog/stream handlers and returns empty arrays; check yt-dlp directly inside the container when debugging empty results
 - supervisorctl socket is not configured, so `supervisorctl status` won't work inside the container; use `ps aux` instead
 - Chromium creates `SingletonLock`/`SingletonSocket`/`SingletonCookie` files that must be cleaned on startup (handled in supervisord.conf)
-- Recommendations catalog uses `getPlaylist('https://www.youtube.com')` not search — yt-dlp's YouTube tab extractor pulls the homepage feed, which is personalized when cookies are available
+- Recommendations catalog uses `getPlaylist('https://www.youtube.com')` not search
+- yt-dlp requires `--js-runtimes node` to solve YouTube's n-challenge (nsig decryption); only Deno is enabled by default
+- Fastify `trustProxy: true` is set so `request.protocol` correctly reflects `X-Forwarded-Proto` from Cloudflare tunnel
 - Tests use vitest: `npm test`
 
 ## Resolved Issues Log
@@ -130,17 +133,25 @@ docker run -d --name tubioplus --restart unless-stopped \
 3. **Addon install failed** (312ce0a): Missing config-prefixed manifest route (`/:config/manifest.json`)
 4. **Empty catalogs: cookie path** (1fde637): `--cookies-from-browser chromium` used default path `~/.config/chromium/` instead of container profile at `/data/chromium-profile`; fixed with `chromium:/data/chromium-profile` syntax
 5. **Empty catalogs: invalid search** (510d684): `yt:recommendations` handler called `ytdlp.search('')` which produced invalid `ytsearch100:` query; fixed by using `ytdlp.getPlaylist('https://www.youtube.com')` to fetch homepage recommendations
+6. **No video formats / empty streams** (7d5d457): yt-dlp reported `JS runtimes: none` despite Node.js being in the container; YouTube's n-challenge (nsig decryption) requires an external JS runtime but only Deno is enabled by default; fixed by adding `--js-runtimes node` to `BASE_ARGS` in `ytdlp.ts`
+7. **Play route missing cookies** (788afa0): `getFreshVideoInfo` in the play route was called without browser cookies, so age-restricted content would fail; fixed by passing `useBrowserCookies` (computed at startup) to the play route
+8. **Stream URLs use http:// behind Cloudflare** (this commit): `request.protocol` returned `http` behind Cloudflare tunnel because Fastify wasn't trusting proxy headers; fixed by adding `trustProxy: true` to Fastify config so `X-Forwarded-Proto` is respected
 
 ## Verified Working
 
 - Health endpoint (`/health`) returns `{"status":"ok","ytdlp":true,"ffmpeg":true}`
-- Recommendations catalog returns 20 personalized metas (tested with Google account logged in via noVNC)
+- All five catalogs return results: recommendations (20), subscriptions (20), history (20), watch later (20), search (20)
+- Stream endpoint returns four quality levels: 360p, 480p, 720p, 1080p
+- Play route streams video data (HTTP 200, Content-Type video/mp4, FFmpeg mux confirmed)
+- Play route works through Cloudflare tunnel (`tubioplus.m2bw.net`)
 - Google login persists across container restarts via `/data/chromium-profile` on `tubio-data` volume
 - noVNC accessible at `http://192.168.10.9:6080/vnc.html`
+- Addon installed in Stremio and actively receiving catalog/meta/stream requests
 
 ## Not Yet Tested
 
-- Installing the addon in Stremio (manifest route fixed in 312ce0a but not end-to-end tested)
-- Video playback (FFmpeg muxing, stream proxying)
-- Cookie-based catalogs (subscriptions, history, watch later)
-- Search catalog (`yt:search`)
+- End-to-end Stremio playback (selecting a video in Stremio UI and watching it play to completion)
+- SponsorBlock segment skipping during playback
+- DeArrow title/thumbnail replacement
+- Subtitle display in Stremio
+- Long-running stream stability (FFmpeg process lifecycle over multi-hour videos)

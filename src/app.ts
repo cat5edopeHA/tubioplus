@@ -53,6 +53,7 @@ export async function buildApp(env: EnvConfig) {
       level: env.nodeEnv === 'production' ? 'info' : 'debug',
       ...(env.nodeEnv !== 'production' ? { transport: { target: 'pino-pretty', options: { colorize: true } } } : {}),
     },
+    trustProxy: true,
     routerOptions: { maxParamLength: 500 },
   });
   const encryptionKey = await loadEncryptionKey(env.encryptionKey);
