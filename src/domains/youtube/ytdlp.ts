@@ -35,7 +35,7 @@ const BASE_ARGS = ['--no-warnings', '--no-cache-dir', '--no-playlist', '-J', '--
 export function buildYtDlpArgs(videoId: string, options: YtDlpOptions): string[] {
   const args = [...BASE_ARGS];
   if (options.cookieFile) { args.push('--cookies', options.cookieFile); }
-  if (options.browserCookies) { args.push('--cookies-from-browser', 'chromium'); }
+  if (options.browserCookies) { args.push('--cookies-from-browser', 'chromium:/data/chromium-profile'); }
   if (options.type === 'search') {
     const searchArgs = args.filter((a) => a !== '--no-playlist');
     searchArgs.push('--flat-playlist');
