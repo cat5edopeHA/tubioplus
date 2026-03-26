@@ -1,7 +1,7 @@
 # TubioPlus - Claude Context
 
 > Read this file before making any changes to the codebase.
-> Last updated: 2026-03-25
+> Last updated: 2026-03-26
 
 ## Project Overview
 
@@ -14,7 +14,8 @@ TubioPlus is a Stremio addon that serves YouTube content (search, recommendation
 - **Browser cookies:** Embedded Chromium with persistent profile at `/data/chromium-profile`, accessed by yt-dlp via `--cookies-from-browser 'chromium:/data/chromium-profile'`
 - **Display server:** Xvfb + x11vnc + websockify (noVNC) for remote Chromium access (Google login)
 - **Process management:** supervisord runs five services: node, chromium, xvfb, x11vnc, websockify
-- **Config encryption:** User config is AES-encrypted into a base64url token embedded in the Stremio addon URL
+- **Config encryption:** User config is AES-encrypted into a base64url token embedded in the Stremio addon URL; encryption key stored on persistent volume at `/data/.encryption-key` so tokens survive image rebuilds
+- **Startup readiness:** Node.js server waits for Chromium process to be running (up to 15s) before accepting HTTP requests, preventing empty catalog results from yt-dlp cookie failures during Chromium startup
 
 ## Key Paths (inside Docker container)
 
@@ -24,6 +25,7 @@ TubioPlus is a Stremio addon that serves YouTube content (search, recommendation
 | `/app/dist/frontend/` | Built React SPA |
 | `/data/` | Persistent volume |
 | `/data/chromium-profile/` | Chromium user data dir (cookies, sessions) |
+| `/data/.encryption-key` | AES-256 encryption key (persists across rebuilds) |
 | `/etc/supervisor/conf.d/supervisord.conf` | Process manager config |
 
 ## Source Layout
@@ -31,7 +33,7 @@ TubioPlus is a Stremio addon that serves YouTube content (search, recommendation
 ```
 src/
   app.ts              # Fastify app, all route definitions
-  server.ts           # Entry point, starts the app
+  server.ts           # Entry point, starts the app, Chromium readiness gate
   shared/
     env.ts            # Environment config (EnvConfig interface)
     validation.ts     # Video ID validation helpers
@@ -42,7 +44,7 @@ src/
     errors.ts         # Custom error classes
   domains/
     youtube/
-      ytdlp.ts        # YtDlpService: search, playlist, video info
+      ytdlp.ts        # YtDlpService: search, playlist, video info, clearCaches
       formats.ts      # Format selection (video/audio)
       types.ts        # VideoInfo, SearchResult types
     catalog/
@@ -92,12 +94,12 @@ The config param is validated with regex `[A-Za-z0-9_\\-]{32,}`.
 
 - `GET /health` — cached health check (yt-dlp + ffmpeg)
 - `POST /api/encrypt` — encrypt config JSON into addon URL
-- `POST /api/reset` — clear session: kills chromium, wipes `/data/chromium-profile`, clears all in-memory caches, disables browser cookies flag; supervisord auto-restarts chromium with a fresh profile
+- `POST /api/reset` — clear session: kills chromium (supervisord auto-restarts it with fresh profile), wipes `/data/chromium-profile`, clears all in-memory caches (video, trending, search), disables browser cookies flag
 
 ## Cookie Flow
 
 1. `BROWSER_COOKIES` env var controls behavior: `auto` (default), `on`, `off`
-2. When `auto`: checks if `/data/chromium-profile` exists at startup, sets `useBrowserCookies` flag
+2. When `auto`: checks if `/data/chromium-profile` exists at startup, sets `useBrowserCookies` flag (mutable, reset endpoint can flip it)
 3. yt-dlp is called with `--cookies-from-browser 'chromium:/data/chromium-profile'`
 4. User logs into Google via noVNC (Chromium opens to Google sign-in on startup)
 5. After login, yt-dlp can access subscriptions, history, watch later
@@ -128,13 +130,18 @@ docker run -d --name tubioplus --restart unless-stopped \
 - The app silently catches yt-dlp errors in catalog/stream handlers and returns empty arrays; check yt-dlp directly inside the container when debugging empty results
 - supervisorctl socket is not configured, so `supervisorctl status` won't work inside the container; use `ps aux` instead
 - Chromium creates `SingletonLock`/`SingletonSocket`/`SingletonCookie` files that must be cleaned on startup (handled in supervisord.conf)
-- Recommendations catalog uses `getPlaylist('https://www.youtube.com')` not search
+- Recommendations catalog uses `getPlaylist('https://www.youtube.com')` not search; returns empty without an active Google login since yt-dlp needs cookies for personalized homepage
 - yt-dlp requires `--js-runtimes node` to solve YouTube's n-challenge (nsig decryption); only Deno is enabled by default
 - Fastify `trustProxy: true` is set so `request.protocol` correctly reflects `X-Forwarded-Proto` from Cloudflare tunnel
 - `request.host` (not `request.hostname`) is used for `baseUrl` construction so the port is preserved for local access
 - FFmpeg play route uses `-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5` on both inputs to handle YouTube dropping HTTP connections mid-stream
 - Stream behaviorHints include `notWebReady: true` so Stremio uses its transcoding pipeline instead of attempting range requests on the live-muxed stream
+- Play route sets `Accept-Ranges: none` header to prevent range request attempts
 - FFmpeg stderr is logged at debug level for diagnosing stream issues
+- Empty yt-dlp results (0 entries) are never cached; this prevents poisoned caches when Chromium is still starting or when requests arrive before login
+- Encryption key is stored at `/data/.encryption-key` on the persistent Docker volume, not inside the image; tokens survive rebuilds without regeneration
+- Server startup includes a Chromium readiness gate: waits up to 15 seconds for Chromium process before accepting HTTP requests
+- `useBrowserCookies` is `let` (mutable) so the reset endpoint can flip it to `false`
 - Tests use vitest: `npm test`
 
 ## Resolved Issues Log
@@ -149,19 +156,29 @@ docker run -d --name tubioplus --restart unless-stopped \
 8. **Stream URLs use http:// behind Cloudflare** (3280dd8): `request.protocol` returned `http` behind Cloudflare tunnel because Fastify wasn't trusting proxy headers; fixed by adding `trustProxy: true` to Fastify config so `X-Forwarded-Proto` is respected
 9. **Missing catalog thumbnails** (69296b7): yt-dlp `--flat-playlist` returns `thumbnails` (array of objects with url/height/width) not `thumbnail` (single string); added `thumbnails` array to `SearchResult` type and `bestThumbnail()` helper in catalog handler that picks the highest resolution entry
 10. **Stream URLs missing port on local access** (69296b7): Fastify's `request.hostname` strips the port, so `baseUrl` was built as `http://192.168.10.9` instead of `http://192.168.10.9:8000`; fixed by using `request.host` (includes port) in both the encrypt API and stream route
-11. **Videos restart midway through playback**: YouTube throttles/drops HTTP connections on FFmpeg's DASH downloads mid-stream; added `-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5` flags to both FFmpeg inputs so dropped connections auto-retry; added `notWebReady: true` to stream behaviorHints so Stremio doesn't attempt range requests on the live-muxed pipe; added `Accept-Ranges: none` response header on the play route; added FFmpeg stderr logging at debug level
-12. **Clear session / reset button**: Added `POST /api/reset` endpoint that kills chromium (supervisord auto-restarts it), wipes `/data/chromium-profile`, clears all in-memory caches (video, trending, search), and flips `useBrowserCookies` to `false`; added `clearCaches()` method to `YtDlpService`; added "Clear Session" button in configure page Auth step with browser `confirm()` prompt and visual feedback
+11. **Videos restart midway through playback** (fa52db9): YouTube throttles/drops HTTP connections on FFmpeg's DASH downloads mid-stream; added `-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5` flags to both FFmpeg inputs so dropped connections auto-retry; added `notWebReady: true` to stream behaviorHints so Stremio doesn't attempt range requests on the live-muxed pipe; added `Accept-Ranges: none` response header on the play route; added FFmpeg stderr logging at debug level
+12. **Clear session / reset button** (fa52db9): Added `POST /api/reset` endpoint that kills chromium (supervisord auto-restarts it), wipes `/data/chromium-profile`, clears all in-memory caches (video, trending, search), and flips `useBrowserCookies` to `false`; added `clearCaches()` method to `YtDlpService`; added "Clear Session" button in configure page Auth step with browser `confirm()` prompt and visual feedback
+13. **Startup race condition: empty catalogs after rebuild** (fa52db9): Stremio polls catalogs immediately on container start, before Chromium finishes initializing (~5s). When yt-dlp's `--cookies-from-browser` fails silently, it returns 0 entries which got cached for 5-10 minutes, making all subsequent requests return empty. Fixed with three layers: (a) moved encryption key to `/data/.encryption-key` on persistent volume so tokens survive rebuilds, (b) never cache empty yt-dlp results (0 entries) so the next request retries, (c) added Chromium readiness gate in `server.ts` that waits up to 15s for Chromium process before accepting HTTP requests
+14. **Encryption key lost on rebuild** (fa52db9): `loadEncryptionKey` defaulted to `.encryption-key` (resolved to `/app/.encryption-key` inside the image), so every `docker build` generated a new key invalidating all Stremio config tokens; changed default path to `/data/.encryption-key` on the persistent Docker volume
 
 ## Verified Working
 
 - Health endpoint (`/health`) returns `{"status":"ok","ytdlp":true,"ffmpeg":true}`
-- All five catalogs return results: recommendations (20), subscriptions (20), history (20), watch later (20), search (20)
+- Search catalog returns 20 results for queries like "lofi hip hop"
+- Recommendations catalog returns empty without Google login (expected; yt-dlp needs cookies for personalized homepage)
 - Catalog entries include proper YouTube thumbnail URLs (hq720.jpg)
 - Stream endpoint returns four quality levels: 360p, 480p, 720p, 1080p
+- Stream behaviorHints include `notWebReady: true` on all quality levels
 - Stream URLs include correct port when accessed locally (e.g. `http://192.168.10.9:8000/play/...`)
 - Play route streams video data (HTTP 200, Content-Type video/mp4, FFmpeg mux confirmed)
+- Play route returns `Accept-Ranges: none` header
 - Play route works through Cloudflare tunnel (`tubioplus.m2bw.net`)
 - Encrypt API returns correct URL with port for local access
+- Encryption key persists on `/data/.encryption-key` across image rebuilds (same hex value before and after)
+- Config tokens survive rebuilds (old token still decrypts correctly after rebuild)
+- Chromium readiness gate works: "Waiting for Chromium to start... Chromium is running." appears in logs before server listens
+- Empty yt-dlp results are not cached (catalog request takes ~1300ms = yt-dlp called, not <1ms = cached)
+- Reset endpoint (`POST /api/reset`) returns success, kills chromium, supervisord restarts it with fresh profile
 - Google login persists across container restarts via `/data/chromium-profile` on `tubio-data` volume
 - noVNC accessible at `http://192.168.10.9:6080/vnc.html`
 - Addon installed in Stremio and actively receiving catalog/meta/stream requests
@@ -173,5 +190,6 @@ docker run -d --name tubioplus --restart unless-stopped \
 
 - SponsorBlock segment count in stream description (needs video with SponsorBlock data)
 - DeArrow title/thumbnail replacement (needs video with DeArrow branding data)
-- Long-running stream stability with FFmpeg reconnect flags (verify streams no longer restart mid-playback)
-- Session reset via configure page (verify chromium restarts, cookies cleared, can re-login via noVNC)
+- Long-running stream stability with FFmpeg reconnect flags (verify streams no longer restart mid-playback over 5+ minutes)
+- Clear Session button visual behavior in configure page UI (endpoint works, frontend not yet exercised in browser)
+- Subscriptions/history/watch later catalogs after Google login via noVNC
