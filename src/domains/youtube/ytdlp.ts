@@ -110,9 +110,7 @@ export class YtDlpService {
     const output = await this.run(args);
     const data = JSON.parse(output);
     const results = (data.entries ?? []) as SearchResult[];
-    if (results.length > 0) {
-      this.searchCache.set(cacheKey, results, 300); // 5 minute TTL
-    }
+    this.searchCache.set(cacheKey, results, 300); // 5 minute TTL
     return results;
   }
 
@@ -126,9 +124,7 @@ export class YtDlpService {
     const output = await this.run(args);
     const data = JSON.parse(output);
     const results = (data.entries ?? []) as SearchResult[];
-    if (results.length > 0) {
-      this.searchCache.set(cacheKey, results, 300); // 5 minute TTL
-    }
+    this.searchCache.set(cacheKey, results, 300); // 5 minute TTL
     return results;
   }
 

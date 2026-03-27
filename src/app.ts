@@ -7,7 +7,6 @@ import { fileURLToPath } from 'node:url';
 import { spawn, execSync, type ChildProcess } from 'node:child_process';
 import { rmSync, mkdirSync } from 'node:fs';
 import type { EnvConfig } from './shared/env.js';
-import { createLogger } from './infrastructure/logger.js';
 import { RateLimiter } from './infrastructure/rate-limit.js';
 import { Cache } from './infrastructure/cache.js';
 import { YtDlpService } from './domains/youtube/ytdlp.js';
@@ -17,6 +16,7 @@ import { stremioPlugin } from './domains/stremio/plugin.js';
 import { manifest } from './domains/stremio/manifest.js';
 import { loadEncryptionKey, decryptConfig, encryptConfig } from './domains/config/encryption.js';
 import { mergeWithDefaults, type AppConfig } from './domains/config/schema.js';
+import { checkAuthCookies, clearAuthCache } from './domains/config/auth-check.js';
 import { isValidVideoId, extractVideoId } from './shared/validation.js';
 import { buildSubtitleList } from './domains/subtitles/handler.js';
 import { buildMeta } from './domains/meta/handler.js';
@@ -47,6 +47,9 @@ const HEALTH_CACHE_TTL = 300000; // 5 minutes
 
 // Base64url regex: at least 32 chars, only [A-Za-z0-9_-]
 const CONFIG_PARAM_REGEX = /^[A-Za-z0-9_-]{32,}$/;
+
+// Catalogs that require authentication
+const AUTH_REQUIRED_CATALOGS = new Set(['yt:recommendations', 'yt:subscriptions', 'yt:history', 'yt:watchlater']);
 
 export async function buildApp(env: EnvConfig) {
   const app = Fastify({
@@ -133,7 +136,8 @@ export async function buildApp(env: EnvConfig) {
   app.get('/health', async () => {
     const now = Date.now();
     if (healthCache && now - healthCache.cachedAt < HEALTH_CACHE_TTL) {
-      return { status: 'ok', ytdlp: healthCache.ytdlp, ffmpeg: healthCache.ffmpeg };
+      const auth = await checkAuthCookies();
+      return { status: 'ok', ytdlp: healthCache.ytdlp, ffmpeg: healthCache.ffmpeg, auth };
     }
 
     let ytdlpOk = false;
@@ -148,7 +152,8 @@ export async function buildApp(env: EnvConfig) {
     } catch { /* ignore */ }
 
     healthCache = { ytdlp: ytdlpOk, ffmpeg: ffmpegOk, cachedAt: now };
-    return { status: 'ok', ytdlp: ytdlpOk, ffmpeg: ffmpegOk };
+    const auth = await checkAuthCookies();
+    return { status: 'ok', ytdlp: ytdlpOk, ffmpeg: ffmpegOk, auth };
   });
 
   // Stremio manifest (bare, without config prefix)
@@ -174,25 +179,23 @@ export async function buildApp(env: EnvConfig) {
   });
 
   // Session reset API
-  app.post(`${env.basePath}/api/reset`, async (request, reply) => {
+  app.post(`${env.basePath}/api/reset`, async (request: any, reply: any) => {
     if (!applyRateLimit(apiLimiter, request, reply)) {
       return { error: 'Too many requests' };
     }
     try {
       // Kill chromium (supervisord auto restarts it with fresh profile)
       try { execSync('pkill -f chromium', { timeout: 5000 }); } catch { /* may not be running */ }
-
       // Wipe chromium profile and recreate empty directory
       try {
         rmSync('/data/chromium-profile', { recursive: true, force: true });
         mkdirSync('/data/chromium-profile', { recursive: true });
       } catch { /* ignore */ }
-
       // Clear all in-memory caches
       ytdlp.clearCaches();
       videoCache.clear();
       trendingCache.clear();
-
+      clearAuthCache();
       return { status: 'ok', message: 'Session cleared. Log in again via noVNC.' };
     } catch {
       reply.status(500);
@@ -210,7 +213,7 @@ export async function buildApp(env: EnvConfig) {
     }
   }
 
-  // Cookie resolution helper
+  // Cookie resolution helper (uses dynamic shouldUseBrowserCookies)
   async function resolveCookies(config: AppConfig): Promise<{ cookieFile?: string; browserCookies?: boolean; cleanup?: () => Promise<void> }> {
     if (shouldUseBrowserCookies()) {
       return { browserCookies: true };
@@ -226,17 +229,14 @@ export async function buildApp(env: EnvConfig) {
   const stremioPrefix = env.basePath;
 
   // Config-prefixed manifest (Stremio fetches this URL when installing the addon)
-  app.get<{ Params: { config: string } }>(
-    `${stremioPrefix}/:config([A-Za-z0-9_\\\\-]{32,})/manifest.json`,
-    async (_request, reply) => {
-      reply.header('Cache-Control', 'max-age=86400');
-      return manifest;
-    },
-  );
+  app.get(`${stremioPrefix}/:config([A-Za-z0-9_\\-]{32,})/manifest.json`, async (_request, reply) => {
+    reply.header('Cache-Control', 'max-age=86400');
+    return manifest;
+  });
 
   // Stremio catalog route -- uses regex constraint on :config to avoid collisions
   app.get<{ Params: { config: string; type: string; id: string } }>(
-    `${stremioPrefix}/:config([A-Za-z0-9_\\\\-]{32,})/catalog/:type/:id.json`,
+    `${stremioPrefix}/:config([A-Za-z0-9_\\-]{32,})/catalog/:type/:id.json`,
     async (request, reply) => {
       if (!applyRateLimit(apiLimiter, request, reply)) return { metas: [] };
       const config = decryptRequestConfig(request.params.config);
@@ -250,7 +250,7 @@ export async function buildApp(env: EnvConfig) {
   );
 
   app.get<{ Params: { config: string; type: string; id: string; extra: string } }>(
-    `${stremioPrefix}/:config([A-Za-z0-9_\\\\-]{32,})/catalog/:type/:id/:extra.json`,
+    `${stremioPrefix}/:config([A-Za-z0-9_\\-]{32,})/catalog/:type/:id/:extra.json`,
     async (request, reply) => {
       if (!applyRateLimit(apiLimiter, request, reply)) return { metas: [] };
       const config = decryptRequestConfig(request.params.config);
@@ -272,6 +272,22 @@ export async function buildApp(env: EnvConfig) {
     _env: EnvConfig,
   ) {
     const { search, skip } = parseExtraParams(extra);
+
+    // For auth-required catalogs, check if Google login is still valid
+    if (AUTH_REQUIRED_CATALOGS.has(catalogId) && catalogId !== 'yt:search') {
+      const authStatus = await checkAuthCookies();
+      if (!authStatus.authenticated) {
+        return {
+          metas: [{
+            id: 'yt:auth-required',
+            type: 'YouTube',
+            name: 'Login Required',
+            poster: 'https://via.placeholder.com/168x238/1a1a2e/e94560?text=Login+Required',
+            description: `Google login has expired. Open the noVNC panel to sign in again.${env.noVncUrl ? ` (${env.noVncUrl})` : ''}`,
+          }],
+        };
+      }
+    }
 
     try {
       let results: any[] = [];
@@ -318,7 +334,7 @@ export async function buildApp(env: EnvConfig) {
 
   // Stremio meta route
   app.get<{ Params: { config: string; type: string; id: string } }>(
-    `${stremioPrefix}/:config([A-Za-z0-9_\\\\-]{32,})/meta/:type/:id.json`,
+    `${stremioPrefix}/:config([A-Za-z0-9_\\-]{32,})/meta/:type/:id.json`,
     async (request, reply) => {
       if (!applyRateLimit(apiLimiter, request, reply)) return { meta: {} };
       const config = decryptRequestConfig(request.params.config);
@@ -340,7 +356,7 @@ export async function buildApp(env: EnvConfig) {
 
   // Stremio stream route
   app.get<{ Params: { config: string; type: string; id: string } }>(
-    `${stremioPrefix}/:config([A-Za-z0-9_\\\\-]{32,})/stream/:type/:id.json`,
+    `${stremioPrefix}/:config([A-Za-z0-9_\\-]{32,})/stream/:type/:id.json`,
     async (request, reply) => {
       if (!applyRateLimit(apiLimiter, request, reply)) return { streams: [] };
       const config = decryptRequestConfig(request.params.config);
@@ -369,7 +385,7 @@ export async function buildApp(env: EnvConfig) {
 
   // Stremio subtitles route
   app.get<{ Params: { config: string; type: string; id: string } }>(
-    `${stremioPrefix}/:config([A-Za-z0-9_\\\\-]{32,})/subtitles/:type/:id.json`,
+    `${stremioPrefix}/:config([A-Za-z0-9_\\-]{32,})/subtitles/:type/:id.json`,
     async (request, reply) => {
       if (!applyRateLimit(apiLimiter, request, reply)) return { subtitles: [] };
       const config = decryptRequestConfig(request.params.config);

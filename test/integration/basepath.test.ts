@@ -12,12 +12,14 @@ describe('BASE_PATH Integration', () => {
     process.env.RATE_LIMIT = 'off';
     process.env.BASE_PATH = '/tubio';
     process.env.BROWSER_COOKIES = 'off';
+    process.env.ENCRYPTION_KEY = 'a'.repeat(64);
     const env = loadEnv();
     app = await buildApp(env);
   });
 
   afterAll(async () => {
     delete process.env.BASE_PATH;
+    delete process.env.ENCRYPTION_KEY;
     await app.close();
   });
 

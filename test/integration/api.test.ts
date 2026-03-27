@@ -13,6 +13,7 @@ describe('API Integration Tests', () => {
     process.env.NODE_ENV = 'test';
     process.env.RATE_LIMIT = 'off';
     process.env.BROWSER_COOKIES = 'off';
+    process.env.ENCRYPTION_KEY = 'a'.repeat(64); // 32-byte hex key for tests
     const env = loadEnv();
     app = await buildApp(env);
     const key = await loadEncryptionKey(env.encryptionKey);
@@ -20,6 +21,7 @@ describe('API Integration Tests', () => {
   });
 
   afterAll(async () => {
+    delete process.env.ENCRYPTION_KEY;
     await app.close();
   });
 

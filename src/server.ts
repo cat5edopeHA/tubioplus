@@ -24,7 +24,7 @@ async function checkBinary(command: string, args: string[]): Promise<boolean> {
   }
 }
 
-async function waitForChromium(maxWaitMs: number = 15000): Promise<boolean> {
+async function waitForChromium(maxWaitMs = 15000): Promise<boolean> {
   const interval = 1000;
   let elapsed = 0;
   while (elapsed < maxWaitMs) {

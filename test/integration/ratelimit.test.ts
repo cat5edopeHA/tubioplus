@@ -9,6 +9,7 @@ describe('Rate Limiting', () => {
   beforeAll(async () => {
     process.env.RATE_LIMIT = 'on';
     process.env.BROWSER_COOKIES = 'off';
+    process.env.ENCRYPTION_KEY = 'a'.repeat(64);
     // Use a nonexistent yt-dlp binary so play requests fail instantly
     // instead of making real network calls to YouTube
     process.env.YT_DLP_PATH = '/nonexistent-yt-dlp';
@@ -19,6 +20,7 @@ describe('Rate Limiting', () => {
   afterAll(async () => {
     delete process.env.RATE_LIMIT;
     delete process.env.YT_DLP_PATH;
+    delete process.env.ENCRYPTION_KEY;
     await app.close();
   });
 

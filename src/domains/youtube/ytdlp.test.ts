@@ -20,7 +20,7 @@ describe('buildYtDlpArgs', () => {
   it('includes browser cookies arg when specified', () => {
     const args = buildYtDlpArgs('dQw4w9WgXcQ', { type: 'info', browserCookies: true });
     expect(args).toContain('--cookies-from-browser');
-    expect(args).toContain('chromium');
+    expect(args).toContain('chromium:/data/chromium-profile');
   });
   it('builds search args correctly', () => {
     const args = buildYtDlpArgs('', { type: 'search', query: 'test query', limit: 20 });
