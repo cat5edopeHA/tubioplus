@@ -94,17 +94,17 @@ The config param is validated with regex `[A-Za-z0-9_\\-]{32,}`.
 
 - `GET /health` — cached health check (yt-dlp + ffmpeg)
 - `POST /api/encrypt` — encrypt config JSON into addon URL
-- `POST /api/reset` — clear session: kills chromium (supervisord auto-restarts it with fresh profile), wipes `/data/chromium-profile`, clears all in-memory caches (video, trending, search), disables browser cookies flag
+- `POST /api/reset` — clear session: kills chromium (supervisord auto-restarts it with fresh profile), wipes `/data/chromium-profile`, clears all in-memory caches (video, trending, search); browser cookies are dynamically re-evaluated after re-login
 
 ## Cookie Flow
 
 1. `BROWSER_COOKIES` env var controls behavior: `auto` (default), `on`, `off`
-2. When `auto`: checks if `/data/chromium-profile` exists at startup, sets `useBrowserCookies` flag (mutable, reset endpoint can flip it)
+2. `shouldUseBrowserCookies()` is a dynamic function that re-evaluates on every call: checks `env.browserCookies` setting and whether `/data/chromium-profile` exists via `existsSync()`
 3. yt-dlp is called with `--cookies-from-browser 'chromium:/data/chromium-profile'`
 4. User logs into Google via noVNC (Chromium opens to Google sign-in on startup)
 5. After login, yt-dlp can access subscriptions, history, watch later
-6. The play route uses `useBrowserCookies` directly (no config token needed for cookie access)
-7. `POST /api/reset` wipes the profile and flips `useBrowserCookies` to `false`; user must log in again via noVNC
+6. The play route and resolveCookies helper both call `shouldUseBrowserCookies()` dynamically
+7. `POST /api/reset` wipes the profile and clears caches; `shouldUseBrowserCookies()` automatically returns `false` while the profile is deleted, then `true` again after re-login recreates it — no container restart needed
 
 ## Docker Build & Deploy (LXC 101)
 
@@ -142,7 +142,7 @@ docker run -d --name tubioplus --restart unless-stopped \
 - Empty yt-dlp results (0 entries) are never cached; this prevents poisoned caches when Chromium is still starting or when requests arrive before login
 - Encryption key is stored at `/data/.encryption-key` on the persistent Docker volume, not inside the image; tokens survive rebuilds without regeneration
 - Server startup includes a Chromium readiness gate: waits up to 15 seconds for Chromium process before accepting HTTP requests
-- `useBrowserCookies` is `let` (mutable) so the reset endpoint can flip it to `false`
+- `shouldUseBrowserCookies()` is a dynamic function (not a static flag) so that after `POST /api/reset` + re-login, cookies are automatically detected without a container restart
 - Tests use vitest: `npm test`
 
 ## Resolved Issues Log
@@ -162,12 +162,14 @@ docker run -d --name tubioplus --restart unless-stopped \
 13. **Startup race condition: empty catalogs after rebuild** (fa52db9): Stremio polls catalogs immediately on container start, before Chromium finishes initializing (~5s). When yt-dlp's `--cookies-from-browser` fails silently, it returns 0 entries which got cached for 5-10 minutes, making all subsequent requests return empty. Fixed with three layers: (a) moved encryption key to `/data/.encryption-key` on persistent volume so tokens survive rebuilds, (b) never cache empty yt-dlp results (0 entries) so the next request retries, (c) added Chromium readiness gate in `server.ts` that waits up to 15s for Chromium process before accepting HTTP requests
 14. **Encryption key lost on rebuild** (fa52db9): `loadEncryptionKey` defaulted to `.encryption-key` (resolved to `/app/.encryption-key` inside the image), so every `docker build` generated a new key invalidating all Stremio config tokens; changed default path to `/data/.encryption-key` on the persistent Docker volume
 15. **Apple TV audio desync** (GitHub #11): YouTube DASH streams have independent PTS (presentation timestamp) values on video and audio tracks; FFmpeg's `-c:a copy` preserved the original mismatched timestamps. Most players silently compensate but Apple TV's AVPlayer is strict about A/V timestamp alignment in fragmented MP4. Fixed by changing FFmpeg audio codec from stream copy (`-c:a copy`) to re-encode (`-c:a aac -b:a 192k`) which regenerates audio timestamps in sync with the video track. Tradeoff is ~1-2s additional stream start latency and marginal CPU usage.
+16. **Browser cookie flag stuck after reset** (GitHub #16): `POST /api/reset` set `useBrowserCookies = false` permanently with no recovery path. After a session reset, all cookie-dependent catalogs (recommendations, history, subscriptions, watchlater) returned empty content, requiring a container restart to recover. Fixed by replacing the static `let useBrowserCookies` flag with a dynamic `shouldUseBrowserCookies()` function that re-evaluates `env.browserCookies` and checks `existsSync('/data/chromium-profile')` on each call. After reset + re-login via noVNC, cookies are automatically picked up without a container restart. Also removed the `useBrowserCookies = false` line from the reset handler since it's no longer needed.
 
 ## Verified Working
 
 - Health endpoint (`/health`) returns `{"status":"ok","ytdlp":true,"ffmpeg":true}`
 - Search catalog returns 20 results for queries like "lofi hip hop"
-- Recommendations catalog returns empty without Google login (expected; yt-dlp needs cookies for personalized homepage)
+- Recommendations catalog returns 20 results with Google login active
+- History catalog returns 20 results with Google login active
 - Catalog entries include proper YouTube thumbnail URLs (hq720.jpg)
 - Stream endpoint returns four quality levels: 360p, 480p, 720p, 1080p
 - Stream behaviorHints include `notWebReady: true` on all quality levels
@@ -187,6 +189,7 @@ docker run -d --name tubioplus --restart unless-stopped \
 - End-to-end Stremio playback confirmed working (video plays, FFmpeg mux runs correctly)
 - Subtitles endpoint returns proper SRT URLs for multiple languages plus auto-captions
 - SponsorBlock/DeArrow frontend config buttons work correctly
+- Cookie detection recovers after session reset + re-login without container restart (`shouldUseBrowserCookies()` dynamic function)
 
 ## Not Yet Tested
 
@@ -194,4 +197,4 @@ docker run -d --name tubioplus --restart unless-stopped \
 - DeArrow title/thumbnail replacement (needs video with DeArrow branding data)
 - Long-running stream stability with FFmpeg reconnect flags (verify streams no longer restart mid-playback over 5+ minutes)
 - Clear Session button visual behavior in configure page UI (endpoint works, frontend not yet exercised in browser)
-- Subscriptions/history/watch later catalogs after Google login via noVNC
+- Full reset → re-login → catalog recovery end-to-end flow (individual pieces verified but not the complete cycle in one session)

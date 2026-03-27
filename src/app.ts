@@ -64,8 +64,14 @@ export async function buildApp(env: EnvConfig) {
   const sponsorblock = new SponsorBlockClient();
   const dearrow = new DeArrowClient();
 
-  // Resolve whether browser cookies should be used (mutable for reset endpoint)
-  let useBrowserCookies = env.browserCookies === 'on' || (env.browserCookies === 'auto' && existsSync('/data/chromium-profile'));
+  // Resolve whether browser cookies should be used (dynamic: re-evaluates on each call
+  // so that after a session reset + re-login, cookies are picked up without a container restart)
+  function shouldUseBrowserCookies(): boolean {
+    if (env.browserCookies === 'on') return true;
+    if (env.browserCookies === 'off') return false;
+    // auto: check if chromium profile directory exists
+    return existsSync('/data/chromium-profile');
+  }
 
   // Rate limiters
   const playLimiter = new RateLimiter({ windowMs: 60000, max: 15 });
@@ -187,9 +193,6 @@ export async function buildApp(env: EnvConfig) {
       videoCache.clear();
       trendingCache.clear();
 
-      // Disable browser cookies until next login
-      useBrowserCookies = false;
-
       return { status: 'ok', message: 'Session cleared. Log in again via noVNC.' };
     } catch {
       reply.status(500);
@@ -209,7 +212,7 @@ export async function buildApp(env: EnvConfig) {
 
   // Cookie resolution helper
   async function resolveCookies(config: AppConfig): Promise<{ cookieFile?: string; browserCookies?: boolean; cleanup?: () => Promise<void> }> {
-    if (useBrowserCookies) {
+    if (shouldUseBrowserCookies()) {
       return { browserCookies: true };
     }
     if (config.cookies) {
@@ -400,7 +403,7 @@ export async function buildApp(env: EnvConfig) {
         if (!isValidVideoId(rawId)) {
           throw new VideoNotFoundError(rawId);
         }
-        const info = await ytdlp.getFreshVideoInfo(rawId, undefined, useBrowserCookies || undefined);
+        const info = await ytdlp.getFreshVideoInfo(rawId, undefined, shouldUseBrowserCookies() || undefined);
         const formats = info.formats ?? [];
         const video = findVideoFormat(formats, height);
         if (!video) {
