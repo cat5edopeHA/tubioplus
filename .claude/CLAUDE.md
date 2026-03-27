@@ -124,12 +124,24 @@ docker run -d --name tubioplus --restart unless-stopped \
   cat5edopeha/tubioplus:nightly
 ```
 
+## Supervisord Chromium Command
+
+```
+command=bash -c "rm -f /data/chromium-profile/SingletonLock /data/chromium-profile/SingletonSocket /data/chromium-profile/SingletonCookie && exec chromium --no-sandbox --password-store=basic --disable-gpu --disable-software-rasterizer --no-first-run --disable-dev-shm-usage --display=:99 --user-data-dir=/data/chromium-profile 'https://accounts.google.com/ServiceLogin?service=youtube'"
+```
+
+Key flags:
+- `--password-store=basic`: Uses deterministic hardcoded key for cookie encryption instead of system keyring (GNOME Keyring / libsecret). Required in Docker where no persistent keyring service exists. Without this flag, Chromium generates a new session-specific encryption key on each start, silently dropping all auth cookies from previous sessions.
+- `--no-sandbox`: Required for running as root in Docker.
+- Singleton lock cleanup (`rm -f`): Removes stale `SingletonLock`/`SingletonSocket`/`SingletonCookie` files left by the previous container instance (different hostname), preventing exit code 21.
+
 ## Development Notes
 
 - `NODE_ENV=production` is baked into the Dockerfile production stage (not passed at runtime)
 - The app silently catches yt-dlp errors in catalog/stream handlers and returns empty arrays; check yt-dlp directly inside the container when debugging empty results
 - supervisorctl socket is not configured, so `supervisorctl status` won't work inside the container; use `ps aux` instead
 - Chromium creates `SingletonLock`/`SingletonSocket`/`SingletonCookie` files that must be cleaned on startup (handled in supervisord.conf)
+- `--password-store=basic` is required for Chromium cookie persistence in Docker; without it, Chromium tries the system keyring, fails silently, generates a per-session key, and drops all encrypted cookies on restart
 - Recommendations catalog uses `getPlaylist('https://www.youtube.com')` not search; returns empty without an active Google login since yt-dlp needs cookies for personalized homepage
 - yt-dlp requires `--js-runtimes node` to solve YouTube's n-challenge (nsig decryption); only Deno is enabled by default
 - Fastify `trustProxy: true` is set so `request.protocol` correctly reflects `X-Forwarded-Proto` from Cloudflare tunnel
@@ -163,6 +175,7 @@ docker run -d --name tubioplus --restart unless-stopped \
 14. **Encryption key lost on rebuild** (fa52db9): `loadEncryptionKey` defaulted to `.encryption-key` (resolved to `/app/.encryption-key` inside the image), so every `docker build` generated a new key invalidating all Stremio config tokens; changed default path to `/data/.encryption-key` on the persistent Docker volume
 15. **Apple TV audio desync** (GitHub #11): YouTube DASH streams have independent PTS (presentation timestamp) values on video and audio tracks; FFmpeg's `-c:a copy` preserved the original mismatched timestamps. Most players silently compensate but Apple TV's AVPlayer is strict about A/V timestamp alignment in fragmented MP4. Fixed by changing FFmpeg audio codec from stream copy (`-c:a copy`) to re-encode (`-c:a aac -b:a 192k`) which regenerates audio timestamps in sync with the video track. Tradeoff is ~1-2s additional stream start latency and marginal CPU usage.
 16. **Browser cookie flag stuck after reset** (GitHub #16): `POST /api/reset` set `useBrowserCookies = false` permanently with no recovery path. After a session reset, all cookie-dependent catalogs (recommendations, history, subscriptions, watchlater) returned empty content, requiring a container restart to recover. Fixed by replacing the static `let useBrowserCookies` flag with a dynamic `shouldUseBrowserCookies()` function that re-evaluates `env.browserCookies` and checks `existsSync('/data/chromium-profile')` on each call. After reset + re-login via noVNC, cookies are automatically picked up without a container restart. Also removed the `useBrowserCookies = false` line from the reset handler since it's no longer needed.
+17. **Chromium cookie persistence across restarts** (GitHub #17, d97751f): Google auth cookies (SID, HSID, SSID, APISID, SAPISID, __Secure-1PSID, __Secure-1PAPISID) were lost on every container restart. Root cause: Chromium encrypts cookie values using the system keyring (GNOME Keyring / libsecret). Inside Docker there is no persistent keyring service; each startup generates a new session-specific encryption key, making previously encrypted cookies unreadable. Chromium silently drops cookies it cannot decrypt. Fixed by adding `--password-store=basic` to the Chromium launch flags in `supervisord.conf`, which uses a deterministic hardcoded key instead of the system keyring. This is standard practice for headless/Docker Chromium. Also wrapped the Chromium command in `bash -c` to clean stale `SingletonLock`/`SingletonSocket`/`SingletonCookie` files before launch, preventing exit code 21 after container restarts (new container hostname vs old lock file).
 
 ## Verified Working
 
@@ -184,6 +197,7 @@ docker run -d --name tubioplus --restart unless-stopped \
 - Empty yt-dlp results are not cached (catalog request takes ~1300ms = yt-dlp called, not <1ms = cached)
 - Reset endpoint (`POST /api/reset`) returns success, kills chromium, supervisord restarts it with fresh profile
 - Google login persists across container restarts via `/data/chromium-profile` on `tubio-data` volume
+- Chromium `--password-store=basic` ensures encrypted cookies survive container restarts (no keyring dependency)
 - noVNC accessible at `http://192.168.10.9:6080/vnc.html`
 - Addon installed in Stremio and actively receiving catalog/meta/stream requests
 - End-to-end Stremio playback confirmed working (video plays, FFmpeg mux runs correctly)
