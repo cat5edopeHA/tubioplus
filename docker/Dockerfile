@@ -12,7 +12,7 @@ RUN cd frontend && npm ci && npm run build
 # Stage 2: Production
 FROM node:20-slim
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ffmpeg python3 chromium xvfb x11vnc novnc websockify supervisor \
+    ffmpeg python3 chromium xvfb x11vnc novnc websockify supervisor sqlite3 \
     && rm -rf /var/lib/apt/lists/*
 
 # Install yt-dlp
