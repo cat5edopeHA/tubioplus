@@ -1,7 +1,7 @@
 # TubioPlus - Claude Context
 
 > Read this file before making any changes to the codebase.
-> Last updated: 2026-03-26
+> Last updated: 2026-03-27
 
 ## Project Overview
 
@@ -138,6 +138,7 @@ docker run -d --name tubioplus --restart unless-stopped \
 - Stream behaviorHints include `notWebReady: true` so Stremio uses its transcoding pipeline instead of attempting range requests on the live-muxed stream
 - Play route sets `Accept-Ranges: none` header to prevent range request attempts
 - FFmpeg stderr is logged at debug level for diagnosing stream issues
+- FFmpeg play route re-encodes audio (`-c:a aac -b:a 192k`) instead of stream copy to regenerate timestamps aligned with the video track; this fixes A/V desync on Apple TV's strict AVPlayer
 - Empty yt-dlp results (0 entries) are never cached; this prevents poisoned caches when Chromium is still starting or when requests arrive before login
 - Encryption key is stored at `/data/.encryption-key` on the persistent Docker volume, not inside the image; tokens survive rebuilds without regeneration
 - Server startup includes a Chromium readiness gate: waits up to 15 seconds for Chromium process before accepting HTTP requests
@@ -160,6 +161,7 @@ docker run -d --name tubioplus --restart unless-stopped \
 12. **Clear session / reset button** (fa52db9): Added `POST /api/reset` endpoint that kills chromium (supervisord auto-restarts it), wipes `/data/chromium-profile`, clears all in-memory caches (video, trending, search), and flips `useBrowserCookies` to `false`; added `clearCaches()` method to `YtDlpService`; added "Clear Session" button in configure page Auth step with browser `confirm()` prompt and visual feedback
 13. **Startup race condition: empty catalogs after rebuild** (fa52db9): Stremio polls catalogs immediately on container start, before Chromium finishes initializing (~5s). When yt-dlp's `--cookies-from-browser` fails silently, it returns 0 entries which got cached for 5-10 minutes, making all subsequent requests return empty. Fixed with three layers: (a) moved encryption key to `/data/.encryption-key` on persistent volume so tokens survive rebuilds, (b) never cache empty yt-dlp results (0 entries) so the next request retries, (c) added Chromium readiness gate in `server.ts` that waits up to 15s for Chromium process before accepting HTTP requests
 14. **Encryption key lost on rebuild** (fa52db9): `loadEncryptionKey` defaulted to `.encryption-key` (resolved to `/app/.encryption-key` inside the image), so every `docker build` generated a new key invalidating all Stremio config tokens; changed default path to `/data/.encryption-key` on the persistent Docker volume
+15. **Apple TV audio desync** (GitHub #11): YouTube DASH streams have independent PTS (presentation timestamp) values on video and audio tracks; FFmpeg's `-c:a copy` preserved the original mismatched timestamps. Most players silently compensate but Apple TV's AVPlayer is strict about A/V timestamp alignment in fragmented MP4. Fixed by changing FFmpeg audio codec from stream copy (`-c:a copy`) to re-encode (`-c:a aac -b:a 192k`) which regenerates audio timestamps in sync with the video track. Tradeoff is ~1-2s additional stream start latency and marginal CPU usage.
 
 ## Verified Working
 
