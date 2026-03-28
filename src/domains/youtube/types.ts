@@ -9,6 +9,7 @@ export interface VideoFormat {
   filesize?: number;
   tbr?: number;
   abr?: number;
+  fps?: number;
   protocol?: string;
 }
 

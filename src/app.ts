@@ -368,13 +368,12 @@ export async function buildApp(env: EnvConfig) {
         const info = await ytdlp.getVideoInfoWithStale(videoId, cookies.cookieFile, cookies.browserCookies);
         const baseUrl = `${request.protocol}://${request.host}${env.basePath}`;
 
-        let sbCount: number | undefined;
+        let sbSegments: import('./domains/sponsorblock/types.js').SkipSegment[] | undefined;
         if (config.sponsorblock.enabled) {
-          const segments = await sponsorblock.getSkipSegments(videoId, config.sponsorblock.categories);
-          sbCount = segments.length;
+          sbSegments = await sponsorblock.getSkipSegments(videoId, config.sponsorblock.categories);
         }
 
-        return { streams: buildStreamList(info.formats ?? [], videoId, baseUrl, config.quality, sbCount) };
+        return { streams: buildStreamList(info.formats ?? [], videoId, baseUrl, config.quality, sbSegments) };
       } catch {
         return { streams: [] };
       } finally {
@@ -404,8 +403,23 @@ export async function buildApp(env: EnvConfig) {
     },
   );
 
+  // Parse SponsorBlock segment pairs from query param (format: "start-end,start-end,...")
+  function parseSponsorSegments(sb?: string): [number, number][] {
+    if (!sb) return [];
+    return sb.split(',').map(s => {
+      const [start, end] = s.split('-').map(Number);
+      return [start, end] as [number, number];
+    }).filter(([s, e]) => !isNaN(s) && !isNaN(e) && s < e);
+  }
+
+  // Build FFmpeg select filter expression to skip sponsor segments
+  function buildSponsorFilter(segments: [number, number][]): string {
+    const betweens = segments.map(([s, e]) => `between(t\\,${s}\\,${e})`).join('+');
+    return `not(${betweens})`;
+  }
+
   // Play route (video streaming)
-  app.get<{ Params: { videoId: string }; Querystring: { q?: string } }>(
+  app.get<{ Params: { videoId: string }; Querystring: { q?: string; sb?: string } }>(
     `${stremioPrefix}/play/:videoId.mp4`,
     async (request, reply) => {
       if (!applyRateLimit(playLimiter, request, reply)) {
@@ -414,6 +428,7 @@ export async function buildApp(env: EnvConfig) {
 
       const rawId = request.params.videoId;
       const height = parseInt(request.query.q ?? '1080', 10);
+      const sponsorSegments = parseSponsorSegments(request.query.sb);
 
       try {
         if (!isValidVideoId(rawId)) {
@@ -446,7 +461,7 @@ export async function buildApp(env: EnvConfig) {
           return { error: 'No audio format found' };
         }
 
-        const ffmpeg = spawn('ffmpeg', [
+        const ffmpegArgs: string[] = [
           '-headers', 'Referer: https://www.youtube.com\r\n',
           '-reconnect', '1',
           '-reconnect_streamed', '1',
@@ -457,13 +472,33 @@ export async function buildApp(env: EnvConfig) {
           '-reconnect_streamed', '1',
           '-reconnect_delay_max', '5',
           '-i', audio.url,
-          '-c:v', 'copy',
+        ];
+
+        if (sponsorSegments.length > 0) {
+          // SponsorBlock active: re-encode both tracks with segment filtering
+          const filterExpr = buildSponsorFilter(sponsorSegments);
+          const fps = video.fps || 30;
+          ffmpegArgs.push(
+            '-vf', `select='${filterExpr}',setpts=N/${fps}/TB`,
+            '-af', `aselect='${filterExpr}',asetpts=N/SR/TB`,
+            '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23',
+            '-r', String(fps),
+          );
+          app.log.info({ videoId: rawId, segments: sponsorSegments.length }, 'SponsorBlock: filtering segments');
+        } else {
+          // No SponsorBlock: copy video, re-encode audio only (for A/V sync)
+          ffmpegArgs.push('-c:v', 'copy');
+        }
+
+        ffmpegArgs.push(
           '-c:a', 'aac',
           '-b:a', '192k',
           '-movflags', 'frag_keyframe+empty_moov+faststart',
           '-f', 'mp4',
           'pipe:1',
-        ], { stdio: ['ignore', 'pipe', 'pipe'] });
+        );
+
+        const ffmpeg = spawn('ffmpeg', ffmpegArgs, { stdio: ['ignore', 'pipe', 'pipe'] });
 
         // Track for graceful shutdown
         activeProcesses.add(ffmpeg);

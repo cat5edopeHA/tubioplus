@@ -24,5 +24,14 @@ describe('buildStreamList', () => {
   it('includes quality name in stream name', () => { expect(buildStreamList(formats, 'dQw4w9WgXcQ', baseUrl, '1080').some((s) => s.name?.includes('1080p'))).toBe(true); });
   it('sets filename in behaviorHints', () => { expect(buildStreamList(formats, 'dQw4w9WgXcQ', baseUrl, '1080')[0].behaviorHints?.filename).toContain('.mp4'); });
   it('returns empty array when no formats available', () => { expect(buildStreamList([], 'dQw4w9WgXcQ', baseUrl, '1080')).toEqual([]); });
-  it('adds SponsorBlock note to description when segments provided', () => { expect(buildStreamList(formats, 'dQw4w9WgXcQ', baseUrl, '1080', 3)[0].description).toContain('SponsorBlock'); });
+  it('adds SponsorBlock note to description when segments provided', () => {
+    const segments = [
+      { segment: [0, 30] as [number, number], category: 'sponsor', UUID: 'a', votes: 1, locked: 0 },
+      { segment: [60, 90] as [number, number], category: 'sponsor', UUID: 'b', votes: 1, locked: 0 },
+      { segment: [120, 150] as [number, number], category: 'intro', UUID: 'c', votes: 1, locked: 0 },
+    ];
+    const streams = buildStreamList(formats, 'dQw4w9WgXcQ', baseUrl, '1080', segments);
+    expect(streams[0].description).toContain('SponsorBlock');
+    expect(streams[0].url).toContain('sb=');
+  });
 });

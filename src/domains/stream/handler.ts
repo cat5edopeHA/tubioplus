@@ -1,12 +1,18 @@
 import type { VideoFormat } from '../youtube/types.js';
 import type { StremioStream } from '../stremio/types.js';
+import type { SkipSegment } from '../sponsorblock/types.js';
 import { findVideoFormat, findAudioFormat } from '../youtube/formats.js';
 
 const QUALITY_LEVELS = [2160, 1080, 720, 480, 360];
 
-export function buildStreamList(formats: VideoFormat[], videoId: string, baseUrl: string, maxQuality: string, sponsorBlockSegmentCount?: number): StremioStream[] {
+export function buildStreamList(formats: VideoFormat[], videoId: string, baseUrl: string, maxQuality: string, sponsorSegments?: SkipSegment[]): StremioStream[] {
   const maxHeight = parseInt(maxQuality, 10) || 1080;
   const streams: StremioStream[] = [];
+  const hasSponsor = sponsorSegments && sponsorSegments.length > 0;
+  const sbParam = hasSponsor
+    ? `&sb=${sponsorSegments.map(s => `${s.segment[0]}-${s.segment[1]}`).join(',')}`
+    : '';
+
   for (const height of QUALITY_LEVELS) {
     if (height > maxHeight) continue;
     const video = findVideoFormat(formats, height);
@@ -16,11 +22,11 @@ export function buildStreamList(formats: VideoFormat[], videoId: string, baseUrl
     const codec = video.vcodec?.split('.')[0] ?? 'unknown';
     const label = height >= 2160 ? '4K' : `${height}p`;
     let description = `${codec} + AAC`;
-    if (sponsorBlockSegmentCount && sponsorBlockSegmentCount > 0) {
-      description += ` | SponsorBlock: ${sponsorBlockSegmentCount} segments will be skipped`;
+    if (hasSponsor) {
+      description += ` | SponsorBlock: ${sponsorSegments.length} segments skipped`;
     }
     streams.push({
-      url: `${baseUrl}/play/${videoId}.mp4?q=${height}`,
+      url: `${baseUrl}/play/${videoId}.mp4?q=${height}${sbParam}`,
       name: `[Tubio+] ${label}`,
       description,
       behaviorHints: { filename: `${videoId}-${height}p.mp4`, bingeGroup: `tubioplus-${height}p`, notWebReady: true },
