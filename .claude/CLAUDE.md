@@ -1,11 +1,52 @@
 # TubioPlus - Claude Context
 
 > Read this file before making any changes to the codebase.
-> Last updated: 2026-03-27
+> Last updated: 2026-03-28
 
 ## Project Overview
 
 TubioPlus is a Stremio addon that serves YouTube content (search, recommendations, subscriptions, history, watch later) via yt-dlp and an embedded Chromium browser for cookie-based authentication. It is a fork/rebrand of Tubio with additional features.
+
+## Communication Style
+
+- Direct action over asking permission. Do the work, confirm results.
+- Concise communication. No hand-holding. No hedging.
+- Avoid hyphens in prose unless absolutely necessary.
+
+## Workflow Rules
+
+These are mandatory. Thinking "I'll skip this one" is never acceptable.
+
+### Before Writing Any Code
+
+1. **Brainstorm first.** Before creating features, adding functionality, building components, or modifying behavior: present a design, get approval. No exceptions, even for "simple" changes.
+2. **Write a plan.** After brainstorming produces a spec, write an implementation plan and save it to `docs/plans/` before touching code.
+3. **TDD.** Every feature and every bugfix starts with a failing test. Write the test. Watch it fail. Write minimal code to pass. No rationalizing your way out of this. If there is no test framework set up yet, setting one up is the first task.
+
+### During Development
+
+4. **Use git worktrees** for feature isolation when the work warrants it.
+5. **Parallelize independent tasks** when executing plans with multiple independent pieces. Use subagents (`task`) per task with review after each completes.
+6. **Debug systematically.** When hitting a bug, test failure, or unexpected behavior: stop. Do not guess. Do not propose random fixes. Investigate root cause first. Investigation must complete before proposing a fix.
+
+### Before Claiming Anything Is Done
+
+7. **Verify with evidence.** Never say "done", "fixed", "passing", or "complete" without running the relevant command and showing its output in the current response. Evidence before assertions, always.
+8. **Request code review.** After completing a major feature or before merging, review the diff against requirements.
+
+### Priority Order
+
+For any given task, evaluate and apply these rules in order:
+
+1. Brainstorming (if building or changing anything)
+2. Writing plans (if multi-step work)
+3. Git worktrees (if feature isolation needed)
+4. TDD (before writing implementation code)
+5. Systematic debugging (if anything breaks)
+6. Verification (before any "done" claim)
+7. Code review (after major work, before merge)
+
+If unsure whether a rule applies, it applies. Follow it.
 
 ## Architecture
 
