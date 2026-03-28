@@ -25,7 +25,25 @@ import { parseExtraParams, paginateResults, buildCatalogMetas } from './domains/
 import { prewarmVideoInfo } from './domains/catalog/prewarm.js';
 import { findVideoFormat, findAudioFormat } from './domains/youtube/formats.js';
 import type { VideoInfo } from './domains/youtube/types.js';
+import type { SkipSegment } from './domains/sponsorblock/types.js';
 import { VideoNotFoundError, ExtractionError } from './infrastructure/errors.js';
+
+const MAX_SPONSOR_SEGMENTS = 50;
+
+// Parse SponsorBlock segment pairs from query param (format: "start-end,start-end,...")
+function parseSponsorSegments(sb?: string): [number, number][] {
+  if (!sb) return [];
+  return sb.split(',').slice(0, MAX_SPONSOR_SEGMENTS).map(s => {
+    const [start, end] = s.split('-').map(Number);
+    return [start, end] as [number, number];
+  }).filter(([s, e]) => !isNaN(s) && !isNaN(e) && isFinite(s) && isFinite(e) && s >= 0 && s < e);
+}
+
+// Build FFmpeg select filter expression to skip sponsor segments
+function buildSponsorFilter(segments: [number, number][]): string {
+  const betweens = segments.map(([s, e]) => `between(t\\,${s}\\,${e})`).join('+');
+  return `not(${betweens})`;
+}
 
 // Augment Fastify request to carry decoded config
 declare module 'fastify' {
@@ -365,13 +383,13 @@ export async function buildApp(env: EnvConfig) {
 
       const cookies = await resolveCookies(config);
       try {
-        const info = await ytdlp.getVideoInfoWithStale(videoId, cookies.cookieFile, cookies.browserCookies);
+        const [info, sbSegments] = await Promise.all([
+          ytdlp.getVideoInfoWithStale(videoId, cookies.cookieFile, cookies.browserCookies),
+          config.sponsorblock.enabled
+            ? sponsorblock.getSkipSegments(videoId, config.sponsorblock.categories)
+            : undefined,
+        ]);
         const baseUrl = `${request.protocol}://${request.host}${env.basePath}`;
-
-        let sbSegments: import('./domains/sponsorblock/types.js').SkipSegment[] | undefined;
-        if (config.sponsorblock.enabled) {
-          sbSegments = await sponsorblock.getSkipSegments(videoId, config.sponsorblock.categories);
-        }
 
         return { streams: buildStreamList(info.formats ?? [], videoId, baseUrl, config.quality, sbSegments) };
       } catch {
@@ -402,21 +420,6 @@ export async function buildApp(env: EnvConfig) {
       }
     },
   );
-
-  // Parse SponsorBlock segment pairs from query param (format: "start-end,start-end,...")
-  function parseSponsorSegments(sb?: string): [number, number][] {
-    if (!sb) return [];
-    return sb.split(',').map(s => {
-      const [start, end] = s.split('-').map(Number);
-      return [start, end] as [number, number];
-    }).filter(([s, e]) => !isNaN(s) && !isNaN(e) && s < e);
-  }
-
-  // Build FFmpeg select filter expression to skip sponsor segments
-  function buildSponsorFilter(segments: [number, number][]): string {
-    const betweens = segments.map(([s, e]) => `between(t\\,${s}\\,${e})`).join('+');
-    return `not(${betweens})`;
-  }
 
   // Play route (video streaming)
   app.get<{ Params: { videoId: string }; Querystring: { q?: string; sb?: string } }>(
